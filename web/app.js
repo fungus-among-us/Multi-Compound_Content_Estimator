@@ -430,8 +430,19 @@
 
   els.calc.onclick = compute;
   els.clear.onclick = () => {
-    els.out.innerHTML =
-      '<div class="empty-state">> SYSTEM_READY<br>> WAITING_FOR_INPUT_<span class="blink">_</span></div>';
+    els.out.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">▶</div>
+        <div class="empty-title">ANALYSIS READY</div>
+        <div class="empty-steps">
+          <div class="step"><span class="step-num">1</span> Load a compound library (URL or JSON file)</div>
+          <div class="step"><span class="step-num">2</span> Select a bio profile from the dropdown</div>
+          <div class="step"><span class="step-num">3</span> Enter mass or target dose parameters</div>
+          <div class="step"><span class="step-num">4</span> Press CALCULATE to generate report</div>
+        </div>
+        <div class="empty-hint"><span class="blink">_</span> Awaiting input...</div>
+      </div>
+    `;
   };
 
   els.massTog.querySelectorAll("button").forEach(

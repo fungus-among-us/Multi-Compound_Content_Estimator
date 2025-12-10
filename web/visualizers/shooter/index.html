@@ -53,44 +53,85 @@
 // VOID.RUNNER SHOOTER - Single File Version
 // ═══════════════════════════════════════════════════════════════
 
+// Progressive intensity: 1=Threshold, 2=Light, 3=Moderate, 4=Strong, 5=Heroic
 const EPISODES = [
   { id: "fungi", name: "FUNGI FOREST", subtitle: "Sacred Mushrooms of the Ancient Woods",
     themes: [
-      { bg: 0x020805, fog: 0x021008, grid1: 0x00ff88, grid2: 0x004422, accent: 0x00ffaa },
-      { bg: 0x050208, fog: 0x080210, grid1: 0x8844ff, grid2: 0x2a1155, accent: 0xaa66ff },
-      { bg: 0x030506, fog: 0x040608, grid1: 0x00ddff, grid2: 0x003344, accent: 0x44eeff },
-      { bg: 0x080604, fog: 0x0a0806, grid1: 0xffaa00, grid2: 0x442200, accent: 0xffcc44 },
-      { bg: 0x020404, fog: 0x030606, grid1: 0x00ffcc, grid2: 0x004433, accent: 0x66ffdd },
+      // Level 1 - Threshold: Earthy, subtle green glow
+      { bg: 0x020805, fog: 0x021008, grid1: 0x00ff88, grid2: 0x004422, accent: 0x00ffaa,
+        intensity: 1, fogDensity: 0.028, gridPulse: 0, hueShift: 0 },
+      // Level 2 - Light: Purple tint, gentle movement
+      { bg: 0x050210, fog: 0x080318, grid1: 0x8866ff, grid2: 0x3a2288, accent: 0xaa88ff,
+        intensity: 2, fogDensity: 0.024, gridPulse: 0.15, hueShift: 0 },
+      // Level 3 - Moderate: Cyan vibrancy, noticeable effects
+      { bg: 0x030510, fog: 0x040815, grid1: 0x00ffff, grid2: 0x006688, accent: 0x66ffff,
+        intensity: 3, fogDensity: 0.020, gridPulse: 0.3, hueShift: 0.05 },
+      // Level 4 - Strong: Warm amber/gold, high saturation
+      { bg: 0x0a0604, fog: 0x100a06, grid1: 0xffcc00, grid2: 0x885500, accent: 0xffee44,
+        intensity: 4, fogDensity: 0.015, gridPulse: 0.5, hueShift: 0.1 },
+      // Level 5 - Heroic: Magenta cycling, extreme visuals
+      { bg: 0x080408, fog: 0x100810, grid1: 0xff00ff, grid2: 0x880088, accent: 0xff88ff,
+        intensity: 5, fogDensity: 0.010, gridPulse: 1.0, hueShift: 0.25 },
     ],
     targets: ["cubensis", "libertyCap", "amanita", "azurescens", "blueMeanie"]
   },
   { id: "desert", name: "DESERT VISIONS", subtitle: "Ancient Cacti of the Sacred Lands",
     themes: [
-      { bg: 0x0a0504, fog: 0x100806, grid1: 0xff6600, grid2: 0x442200, accent: 0xff8833 },
-      { bg: 0x080408, fog: 0x0c060c, grid1: 0xff00aa, grid2: 0x440033, accent: 0xff44cc },
-      { bg: 0x06050a, fog: 0x08070c, grid1: 0xffcc00, grid2: 0x443300, accent: 0xffdd44 },
-      { bg: 0x0a0408, fog: 0x0c0508, grid1: 0xff4466, grid2: 0x441122, accent: 0xff6688 },
-      { bg: 0x050608, fog: 0x070810, grid1: 0x4488ff, grid2: 0x112244, accent: 0x66aaff },
+      // Level 1 - Threshold: Dusty orange, grounded
+      { bg: 0x0a0504, fog: 0x100806, grid1: 0xff6600, grid2: 0x442200, accent: 0xff8833,
+        intensity: 1, fogDensity: 0.028, gridPulse: 0, hueShift: 0 },
+      // Level 2 - Light: Hot pink emergence
+      { bg: 0x080408, fog: 0x0c060c, grid1: 0xff44aa, grid2: 0x660044, accent: 0xff66cc,
+        intensity: 2, fogDensity: 0.024, gridPulse: 0.15, hueShift: 0 },
+      // Level 3 - Moderate: Golden sun, vivid
+      { bg: 0x08050a, fog: 0x0c080f, grid1: 0xffdd00, grid2: 0x886600, accent: 0xffee44,
+        intensity: 3, fogDensity: 0.020, gridPulse: 0.3, hueShift: 0.05 },
+      // Level 4 - Strong: Crimson intensity
+      { bg: 0x0a0408, fog: 0x0c0508, grid1: 0xff4466, grid2: 0x881122, accent: 0xff6688,
+        intensity: 4, fogDensity: 0.015, gridPulse: 0.5, hueShift: 0.1 },
+      // Level 5 - Heroic: Electric blue/white blaze
+      { bg: 0x050610, fog: 0x080918, grid1: 0x44aaff, grid2: 0x2266aa, accent: 0x88ccff,
+        intensity: 5, fogDensity: 0.010, gridPulse: 1.0, hueShift: 0.25 },
     ],
     targets: ["peyote", "sanPedro"]
   },
   { id: "jungle", name: "JUNGLE SPIRITS", subtitle: "Vines of the Amazon Dreamtime",
     themes: [
-      { bg: 0x020604, fog: 0x030805, grid1: 0x44ff00, grid2: 0x114400, accent: 0x88ff44 },
-      { bg: 0x040206, fog: 0x050308, grid1: 0x00ff66, grid2: 0x003322, accent: 0x44ff88 },
-      { bg: 0x030405, fog: 0x040506, grid1: 0x22ffaa, grid2: 0x084422, accent: 0x66ffcc },
-      { bg: 0x050304, fog: 0x080405, grid1: 0xaaff00, grid2: 0x334400, accent: 0xccff44 },
-      { bg: 0x020505, fog: 0x030707, grid1: 0x00ffff, grid2: 0x004444, accent: 0x44ffff },
+      // Level 1 - Threshold: Deep jungle green
+      { bg: 0x020604, fog: 0x030805, grid1: 0x44ff00, grid2: 0x114400, accent: 0x88ff44,
+        intensity: 1, fogDensity: 0.028, gridPulse: 0, hueShift: 0 },
+      // Level 2 - Light: Emerald shifting
+      { bg: 0x040208, fog: 0x050310, grid1: 0x00ff66, grid2: 0x004422, accent: 0x44ff88,
+        intensity: 2, fogDensity: 0.024, gridPulse: 0.15, hueShift: 0 },
+      // Level 3 - Moderate: Aqua dream
+      { bg: 0x030406, fog: 0x040608, grid1: 0x22ffcc, grid2: 0x088866, accent: 0x66ffdd,
+        intensity: 3, fogDensity: 0.020, gridPulse: 0.3, hueShift: 0.05 },
+      // Level 4 - Strong: Lime electric
+      { bg: 0x050306, fog: 0x080408, grid1: 0xaaff00, grid2: 0x558800, accent: 0xccff44,
+        intensity: 4, fogDensity: 0.015, gridPulse: 0.5, hueShift: 0.1 },
+      // Level 5 - Heroic: Full spectrum jungle
+      { bg: 0x020608, fog: 0x030810, grid1: 0x00ffff, grid2: 0x008888, accent: 0x66ffff,
+        intensity: 5, fogDensity: 0.010, gridPulse: 1.0, hueShift: 0.25 },
     ],
     targets: ["ayahuasca", "chacruna"]
   },
   { id: "creatures", name: "SACRED CREATURES", subtitle: "Spirit Animals of Ancient Medicine",
     themes: [
-      { bg: 0x020208, fog: 0x03030c, grid1: 0x4444ff, grid2: 0x111144, accent: 0x6666ff },
-      { bg: 0x040408, fog: 0x06060c, grid1: 0x00ccff, grid2: 0x003344, accent: 0x44ddff },
-      { bg: 0x050306, fog: 0x080408, grid1: 0xcc44ff, grid2: 0x331144, accent: 0xdd66ff },
-      { bg: 0x020406, fog: 0x030608, grid1: 0x00ffaa, grid2: 0x004433, accent: 0x44ffcc },
-      { bg: 0x060404, fog: 0x0a0606, grid1: 0xff8800, grid2: 0x442200, accent: 0xffaa44 },
+      // Level 1 - Threshold: Deep indigo calm
+      { bg: 0x020208, fog: 0x03030c, grid1: 0x4444ff, grid2: 0x111144, accent: 0x6666ff,
+        intensity: 1, fogDensity: 0.028, gridPulse: 0, hueShift: 0 },
+      // Level 2 - Light: Sky blue opening
+      { bg: 0x040410, fog: 0x060614, grid1: 0x00ccff, grid2: 0x004466, accent: 0x44ddff,
+        intensity: 2, fogDensity: 0.024, gridPulse: 0.15, hueShift: 0 },
+      // Level 3 - Moderate: Violet spirits
+      { bg: 0x050308, fog: 0x08040c, grid1: 0xcc44ff, grid2: 0x662288, accent: 0xdd66ff,
+        intensity: 3, fogDensity: 0.020, gridPulse: 0.3, hueShift: 0.05 },
+      // Level 4 - Strong: Teal transcendence
+      { bg: 0x020508, fog: 0x030810, grid1: 0x00ffaa, grid2: 0x008866, accent: 0x44ffcc,
+        intensity: 4, fogDensity: 0.015, gridPulse: 0.5, hueShift: 0.1 },
+      // Level 5 - Heroic: Solar flare breakthrough
+      { bg: 0x080504, fog: 0x100a08, grid1: 0xff8800, grid2: 0x884400, accent: 0xffaa44,
+        intensity: 5, fogDensity: 0.010, gridPulse: 1.0, hueShift: 0.25 },
     ],
     targets: ["kamboFrog", "bufoToad"]
   }
@@ -365,70 +406,152 @@ const TARGET_FACTORIES = {
 
 function createNomadShip() {
   const ship = new THREE.Group();
-  const coreMat = new THREE.MeshBasicMaterial({ color: 0xff0066, transparent: true, opacity: 0.9 });
-  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 2), coreMat);
-  ship.add(core); ship.userData.core = core;
 
-  const innerShellMat = new THREE.MeshBasicMaterial({ color: 0xff3399, transparent: true, opacity: 0.3, wireframe: true });
-  const innerShell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7, 1), innerShellMat);
-  ship.add(innerShell); ship.userData.innerShell = innerShell;
+  // CORE: Pulsating energy center
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xff0066, transparent: true, opacity: 0.95 });
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), coreMat);
+  ship.add(core);
+  ship.userData.core = core;
 
-  const hullMat = new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.15, roughness: 0.1, side: THREE.DoubleSide });
-  const hull = new THREE.Mesh(new THREE.SphereGeometry(1.2, 24, 16, 0, Math.PI*2, 0, Math.PI*0.6), hullMat);
-  hull.position.y = 0.2; ship.add(hull);
+  // INNER GLOW: Secondary pulsing layer
+  const innerGlowMat = new THREE.MeshBasicMaterial({ color: 0xff3399, transparent: true, opacity: 0.4 });
+  const innerGlow = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 8), innerGlowMat);
+  ship.add(innerGlow);
+  ship.userData.innerGlow = innerGlow;
 
-  const ring1Mat = new THREE.MeshBasicMaterial({ color: 0x00ddff, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
-  const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.02, 8, 48), ring1Mat);
-  ring1.rotation.x = Math.PI/2; ship.add(ring1); ship.userData.ring1 = ring1;
-
-  const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xff44aa, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
-  const ring2 = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.015, 8, 32), ring2Mat);
-  ring2.rotation.x = Math.PI/2; ring2.rotation.z = 0.3; ship.add(ring2); ship.userData.ring2 = ring2;
-
-  const ring3Mat = new THREE.MeshBasicMaterial({ color: 0x44ffaa, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
-  const ring3 = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.01, 8, 64), ring3Mat);
-  ring3.rotation.x = Math.PI/2.2; ship.add(ring3); ship.userData.ring3 = ring3;
-
-  const tentacles = [];
-  const tentacleMat = new THREE.MeshBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0.4 });
-  for (let i = 0; i < 6; i++) {
-    const angle = (i/6) * Math.PI * 2;
-    const points = [];
-    for (let j = 0; j <= 12; j++) {
-      const t = j/12, wave = Math.sin(t*Math.PI*2) * 0.15;
-      points.push(new THREE.Vector3(Math.cos(angle)*(0.8+t*1.5)+wave, -t*2.5-0.3, Math.sin(angle)*(0.8+t*1.5)+wave));
-    }
-    const tent = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 16, 0.05, 8, false), tentacleMat.clone());
-    ship.add(tent);
-    tentacles.push({ mesh: tent, angle, phase: Math.random()*Math.PI*2 });
+  // MAIN BODY: Elongated conical hull (teardrop shape) using LatheGeometry
+  const points = [];
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20;
+    // Teardrop curve: wider at back, tapers to point at front
+    const r = Math.sin(t * Math.PI) * (1 - t * 0.5) * 0.9;
+    const z = t * 3.5 - 1.2; // Length from front to back
+    points.push(new THREE.Vector2(r, z));
   }
-  ship.userData.tentacles = tentacles;
+  const hullGeo = new THREE.LatheGeometry(points, 24);
+  const hullMat = new THREE.MeshStandardMaterial({
+    color: 0x3366cc,
+    transparent: true,
+    opacity: 0.18,
+    roughness: 0.1,
+    metalness: 0.3,
+    side: THREE.DoubleSide
+  });
+  const hull = new THREE.Mesh(hullGeo, hullMat);
+  hull.rotation.x = Math.PI / 2; // Point forward (negative Z)
+  ship.add(hull);
+  ship.userData.hull = hull;
 
-  const probeMat = new THREE.MeshBasicMaterial({ color: 0xff0088, transparent: true, opacity: 0.7 });
-  const probe = new THREE.Mesh(new THREE.ConeGeometry(0.15, 1.5, 6), probeMat);
-  probe.rotation.x = -Math.PI/2; probe.position.z = -1.8; probe.position.y = 0.2; ship.add(probe);
+  // OUTER MEMBRANE: Ethereal translucent shell
+  const membraneMat = new THREE.MeshBasicMaterial({
+    color: 0x4488ff,
+    transparent: true,
+    opacity: 0.06,
+    wireframe: true
+  });
+  const membrane = new THREE.Mesh(new THREE.SphereGeometry(1.4, 16, 12), membraneMat);
+  membrane.scale.set(0.9, 0.7, 1.6);
+  ship.add(membrane);
+  ship.userData.membrane = membrane;
 
-  ship.scale.setScalar(0.8);
+  // ENERGY RINGS: Orbiting halos
+  const ring1Mat = new THREE.MeshBasicMaterial({ color: 0x00ddff, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+  const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.02, 8, 48), ring1Mat);
+  ring1.rotation.x = Math.PI / 2;
+  ship.add(ring1);
+  ship.userData.ring1 = ring1;
+
+  const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xff44aa, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
+  const ring2 = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.015, 8, 36), ring2Mat);
+  ring2.rotation.x = Math.PI / 2.3;
+  ring2.rotation.z = 0.5;
+  ship.add(ring2);
+  ship.userData.ring2 = ring2;
+
+  // TENDRILS: Organic trailing appendages
+  const tendrils = [];
+  const tendrilMat = new THREE.MeshBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0.35 });
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2;
+    const points = [];
+    for (let j = 0; j <= 14; j++) {
+      const t = j / 14;
+      const wave = Math.sin(t * Math.PI * 2.5) * 0.12;
+      points.push(new THREE.Vector3(
+        Math.cos(angle) * (0.6 + t * 0.9) + wave,
+        t * 2.8 + 0.8, // Trail behind (positive Y in ship space, which is positive Z after rotation)
+        Math.sin(angle) * (0.6 + t * 0.9) + wave
+      ));
+    }
+    const curve = new THREE.CatmullRomCurve3(points);
+    const tendril = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, 18, 0.04, 6, false),
+      tendrilMat.clone()
+    );
+    ship.add(tendril);
+    tendrils.push({ mesh: tendril, angle, phase: Math.random() * Math.PI * 2 });
+  }
+  ship.userData.tendrils = tendrils;
+
+  // FRONT PROBE: Conical firing point with glow
+  const probeMat = new THREE.MeshBasicMaterial({ color: 0xff0088, transparent: true, opacity: 0.85 });
+  const probe = new THREE.Mesh(new THREE.ConeGeometry(0.12, 1.4, 8), probeMat);
+  probe.rotation.x = -Math.PI / 2;
+  probe.position.z = -2.2;
+  probe.position.y = 0;
+  ship.add(probe);
+  ship.userData.probe = probe;
+
+  // PROBE GLOW
+  const probeGlowMat = new THREE.MeshBasicMaterial({ color: 0xff0088, transparent: true, opacity: 0.35 });
+  const probeGlow = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), probeGlowMat);
+  probeGlow.position.z = -2.6;
+  ship.add(probeGlow);
+  ship.userData.probeGlow = probeGlow;
+
+  ship.scale.setScalar(0.75);
   ship.position.y = 4;
   return ship;
 }
 
 function animateShip(delta, now) {
   if (!ship) return;
+
+  // Core pulse
   if (ship.userData.core) {
     ship.userData.core.rotation.y += delta * 2;
     ship.userData.core.rotation.x += delta;
-    ship.userData.core.scale.setScalar(1 + Math.sin(now*0.006) * 0.2);
+    const pulse = 1 + Math.sin(now * 0.006) * 0.25;
+    ship.userData.core.scale.setScalar(pulse);
   }
-  if (ship.userData.innerShell) {
-    ship.userData.innerShell.rotation.y -= delta * 1.5;
-    ship.userData.innerShell.rotation.z += delta * 0.5;
+
+  // Inner glow counter-rotation
+  if (ship.userData.innerGlow) {
+    ship.userData.innerGlow.rotation.y -= delta * 1.5;
+    ship.userData.innerGlow.scale.setScalar(1 + Math.sin(now * 0.004) * 0.15);
   }
-  if (ship.userData.ring1) ship.userData.ring1.rotation.z += delta * 0.4;
-  if (ship.userData.ring2) ship.userData.ring2.rotation.z -= delta * 0.6;
-  if (ship.userData.ring3) ship.userData.ring3.rotation.z += delta * 0.2;
-  if (ship.userData.tentacles) {
-    ship.userData.tentacles.forEach(t => { t.mesh.rotation.y = Math.sin(now*0.003 + t.phase) * 0.1; });
+
+  // Membrane breathing
+  if (ship.userData.membrane) {
+    const breathe = 1 + Math.sin(now * 0.002) * 0.05;
+    ship.userData.membrane.scale.set(0.9 * breathe, 0.7 * breathe, 1.6 * breathe);
+    ship.userData.membrane.rotation.y += delta * 0.1;
+  }
+
+  // Ring orbits
+  if (ship.userData.ring1) ship.userData.ring1.rotation.z += delta * 0.5;
+  if (ship.userData.ring2) ship.userData.ring2.rotation.z -= delta * 0.7;
+
+  // Tendril animation
+  if (ship.userData.tendrils) {
+    ship.userData.tendrils.forEach(t => {
+      t.mesh.rotation.y = Math.sin(now * 0.002 + t.phase) * 0.12;
+    });
+  }
+
+  // Probe glow pulse
+  if (ship.userData.probeGlow) {
+    ship.userData.probeGlow.scale.setScalar(1 + Math.sin(now * 0.01) * 0.3);
   }
 }
 
@@ -502,7 +625,14 @@ function init() {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
   window.addEventListener('contextmenu', e => e.preventDefault());
-  window.addEventListener('message', e => { if (e.data?.type === 'audio-beat') crosshair.scale.setScalar(1 + (e.data.energy||1) * 0.3); });
+  // Audio beat pulses the ship core instead of crosshair for better aiming
+  window.addEventListener('message', e => {
+    if (e.data?.type === 'audio-beat' && ship && ship.userData.core) {
+      const energy = e.data.energy || 1;
+      ship.userData.core.material.opacity = Math.min(1, 0.9 + energy * 0.3);
+      ship.userData.core.scale.setScalar(1.3 + energy * 0.4);
+    }
+  });
 
   applyTheme();
   showEpisodeOverlay();
@@ -518,9 +648,14 @@ function applyTheme() {
   const theme = ep.themes[state.themeIndex];
   scene.background = new THREE.Color(theme.bg);
   scene.fog.color.setHex(theme.fog);
+  scene.fog.density = theme.fogDensity || 0.025;
   gridHelper1.material.color.setHex(theme.grid1);
   gridHelper2.material.color.setHex(theme.grid2);
   renderer.setClearColor(theme.bg, 1);
+
+  // Store base colors for dynamic effects
+  state.baseGrid1 = theme.grid1;
+  state.baseGrid2 = theme.grid2;
 }
 
 function nextTheme() {
@@ -577,8 +712,25 @@ function fireBullet() {
 
   const bulletMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.9 });
   const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), bulletMat);
-  bullet.position.copy(crosshair.position);
-  bullet.userData.velocity = new THREE.Vector3(0, 0, -CONFIG.bulletSpeed);
+
+  // Get ship's probe position in world coordinates
+  const probeWorldPos = new THREE.Vector3();
+  if (ship && ship.userData.probe) {
+    ship.userData.probe.getWorldPosition(probeWorldPos);
+  } else {
+    // Fallback to ship position if probe not found
+    probeWorldPos.copy(ship ? ship.position : new THREE.Vector3(0, 4, 0));
+    probeWorldPos.z -= 1.5;
+  }
+
+  bullet.position.copy(probeWorldPos);
+
+  // Calculate direction from probe to crosshair
+  const direction = new THREE.Vector3()
+    .subVectors(crosshair.position, probeWorldPos)
+    .normalize();
+
+  bullet.userData.velocity = direction.multiplyScalar(CONFIG.bulletSpeed);
 
   const glowMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
   bullet.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), glowMat));
@@ -616,12 +768,11 @@ function animate() {
 
   if (state.isFiring) fireBullet();
 
-  // Crosshair
+  // Crosshair - smooth tracking without rotation
   const targetX = state.mouseX * 15, targetY = state.mouseY * 8 + 5;
   crosshair.position.x += (targetX - crosshair.position.x) * 0.15;
   crosshair.position.y += (targetY - crosshair.position.y) * 0.15;
   crosshair.scale.lerp(new THREE.Vector3(1,1,1), 0.1);
-  crosshair.rotation.z += 0.01;
 
   // Ship follows crosshair
   if (ship) {
@@ -678,6 +829,35 @@ function animate() {
   // Grid scroll
   if (gridHelper1) gridHelper1.position.z = (gridHelper1.position.z + 0.1) % 4;
   if (gridHelper2) gridHelper2.position.z = (gridHelper2.position.z + 0.1) % 8;
+
+  // Progressive psychedelic effects based on theme intensity
+  const theme = EPISODES[state.episode].themes[state.themeIndex];
+  const intensity = theme.intensity || 1;
+
+  // Grid pulse effect (stronger at higher intensities)
+  if (theme.gridPulse > 0 && gridHelper1 && gridHelper2) {
+    const pulse = 1 + Math.sin(now * 0.003 * intensity) * theme.gridPulse * 0.4;
+    gridHelper1.material.opacity = 0.4 + theme.gridPulse * pulse * 0.3;
+    gridHelper2.material.opacity = 0.3 + theme.gridPulse * pulse * 0.2;
+  }
+
+  // Hue shift effect (color cycling at higher intensities)
+  if (theme.hueShift > 0 && state.baseGrid1) {
+    const hueOffset = Math.sin(now * 0.0005 * intensity) * theme.hueShift;
+    const color1 = new THREE.Color(state.baseGrid1);
+    const color2 = new THREE.Color(state.baseGrid2);
+    color1.offsetHSL(hueOffset, 0, 0);
+    color2.offsetHSL(hueOffset * 0.7, 0, 0);
+    gridHelper1.material.color.copy(color1);
+    gridHelper2.material.color.copy(color2);
+  }
+
+  // Camera subtle sway at higher intensities (psychedelic disorientation)
+  if (intensity >= 3) {
+    const sway = (intensity - 2) * 0.002;
+    camera.position.x = Math.sin(now * 0.0008) * sway * 2;
+    camera.rotation.z = Math.sin(now * 0.0006) * sway * 0.5;
+  }
 
   renderer.render(scene, camera);
 }
