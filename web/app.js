@@ -3,12 +3,12 @@
     "https://raw.githubusercontent.com/fungus-among-us/Mushroom_Math/refs/heads/main/profiles.json";
 
   const VISUALIZERS = [
-    "shooter/index.html",
-    "sparkling-boxes.html",
-    "particle-supernova.html",
-    "magma.html",
-    "reflecting.html",
-    "motion-blur.html",
+    "visualizers/shooter/index.html",
+    "visualizers/sparkling-boxes.html",
+    "visualizers/particle-supernova.html",
+    "visualizers/magma.html",
+    "visualizers/reflecting.html",
+    "visualizers/motion-blur.html",
   ];
 
   const state = {

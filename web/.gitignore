@@ -3,6 +3,7 @@
 .aicodeprep-gui
 .vscode/
 .idea/
+CLAUDE.md
 
 # Node (in case someone adds it)
 node_modules/
