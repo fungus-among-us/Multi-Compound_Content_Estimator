@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; user-select: none; }
+    canvas { display: block; }
+
+    #ui {
+      position: absolute; top: 20px; left: 20px; pointer-events: none;
+      color: #00d9ff; text-shadow: 0 0 8px currentColor; font-weight: bold;
+    }
+    #score-display { font-size: 28px; margin-bottom: 8px; }
+    #episode-display {
+      font-size: 14px; color: #ffae00; text-shadow: 0 0 10px #ffae00;
+      margin-bottom: 4px; letter-spacing: 2px;
+    }
+    #target-name {
+      font-size: 16px; color: #fff; opacity: 0; transition: opacity 0.3s;
+      margin-top: 10px; text-shadow: 0 0 10px currentColor;
+    }
+    #target-name.visible { opacity: 1; }
+
+    #controls {
+      position: absolute; bottom: 20px; width: 100%; text-align: center; pointer-events: none;
+    }
+    .hud-btn {
+      pointer-events: auto; background: rgba(0,0,0,0.5); border: 1px solid currentColor;
+      color: #00d9ff; padding: 12px 24px; cursor: pointer; font-weight: bold;
+      text-transform: uppercase; margin: 0 8px; transition: all 0.2s;
+      text-shadow: 0 0 5px currentColor;
+    }
+    .hud-btn:hover { background: rgba(0, 217, 255, 0.2); box-shadow: 0 0 20px rgba(0, 217, 255, 0.5); }
+
+    /* Simple crosshair */
+    #crosshair {
+      position: absolute; width: 40px; height: 40px;
+      transform: translate(-50%, -50%); pointer-events: none;
+    }
+    #crosshair::before, #crosshair::after {
+      content: ''; position: absolute; background: rgba(255, 255, 255, 0.8);
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+    }
+    #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+    #crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+    #crosshair-dot {
+      position: absolute; top: 50%; left: 50%; width: 6px; height: 6px;
+      background: #ff3366; border-radius: 50%; transform: translate(-50%, -50%);
+      box-shadow: 0 0 10px #ff3366;
+    }
+
+    /* Episode transition overlay */
+    #episode-overlay {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.9); z-index: 100; opacity: 0; pointer-events: none;
+      transition: opacity 0.8s;
+    }
+    #episode-overlay.active { opacity: 1; }
+    #episode-overlay h1 {
+      font-size: 48px; letter-spacing: 8px; text-transform: uppercase;
+      text-shadow: 0 0 30px currentColor, 0 0 60px currentColor;
+    }
+    #episode-overlay p {
+      font-size: 18px; opacity: 0.7; margin-top: 10px; letter-spacing: 3px;
+    }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://esm.sh/three@0.160.0", "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <div id="crosshair"><div id="crosshair-dot"></div></div>
+
+  <div id="ui">
+    <div id="episode-display">EPISODE I: FUNGI FOREST</div>
+    <div id="score-display">SCORE: <span id="score">0</span></div>
+    <div style="font-size: 11px; color: #888; margin-top: 5px;">HOLD MOUSE TO FIRE</div>
+    <div id="target-name"></div>
+  </div>
+
+  <div id="episode-overlay">
+    <div style="text-align: center;">
+      <h1 id="overlay-title">FUNGI FOREST</h1>
+      <p id="overlay-subtitle">Sacred Mushrooms of the Ancient Woods</p>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button class="hud-btn" onclick="window.parent.postMessage('vis-prev','*')">◀ PREV</button>
+    <button class="hud-btn" onclick="window.parent.postMessage('audio-toggle','*')">♪ MUSIC</button>
+    <button class="hud-btn" id="nextEpisodeBtn">NEXT EPISODE ▶</button>
+    <button class="hud-btn" onclick="window.parent.postMessage('vis-next','*')">NEXT VIS ▶▶</button>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+    import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+    import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+    import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+    // ═══════════════════════════════════════════════════════════════
+    // EPISODE DEFINITIONS - Each with unique themes and targets
+    // ═══════════════════════════════════════════════════════════════
+    const EPISODES = [
+      {
+        id: "fungi",
+        name: "FUNGI FOREST",
+        subtitle: "Sacred Mushrooms of the Ancient Woods",
+        themes: [
+          { bg: 0x020805, fog: 0x021008, grid1: 0x00ff88, grid2: 0x004422, accent: 0x00ffaa },
+          { bg: 0x050208, fog: 0x080210, grid1: 0x8844ff, grid2: 0x2a1155, accent: 0xaa66ff },
+          { bg: 0x030506, fog: 0x040608, grid1: 0x00ddff, grid2: 0x003344, accent: 0x44eeff },
+          { bg: 0x080604, fog: 0x0a0806, grid1: 0xffaa00, grid2: 0x442200, accent: 0xffcc44 },
+          { bg: 0x020404, fog: 0x030606, grid1: 0x00ffcc, grid2: 0x004433, accent: 0x66ffdd },
+        ],
+        targets: ["cubensis", "libertyCap", "amanita", "azurescens", "blueMeanie"],
+      },
+      {
+        id: "desert",
+        name: "DESERT VISIONS",
+        subtitle: "Ancient Cacti of the Sacred Lands",
+        themes: [
+          { bg: 0x0a0504, fog: 0x100806, grid1: 0xff6600, grid2: 0x442200, accent: 0xff8833 },
+          { bg: 0x080408, fog: 0x0c060c, grid1: 0xff00aa, grid2: 0x440033, accent: 0xff44cc },
+          { bg: 0x06050a, fog: 0x08070c, grid1: 0xffcc00, grid2: 0x443300, accent: 0xffdd44 },
+          { bg: 0x0a0408, fog: 0x0c0508, grid1: 0xff4466, grid2: 0x441122, accent: 0xff6688 },
+          { bg: 0x050608, fog: 0x070810, grid1: 0x4488ff, grid2: 0x112244, accent: 0x66aaff },
+        ],
+        targets: ["peyote", "sanPedro"],
+      },
+      {
+        id: "jungle",
+        name: "JUNGLE SPIRITS",
+        subtitle: "Vines of the Amazon Dreamtime",
+        themes: [
+          { bg: 0x020604, fog: 0x030805, grid1: 0x44ff00, grid2: 0x114400, accent: 0x88ff44 },
+          { bg: 0x040206, fog: 0x050308, grid1: 0x00ff66, grid2: 0x003322, accent: 0x44ff88 },
+          { bg: 0x030405, fog: 0x040506, grid1: 0x22ffaa, grid2: 0x084422, accent: 0x66ffcc },
+          { bg: 0x050304, fog: 0x080405, grid1: 0xaaff00, grid2: 0x334400, accent: 0xccff44 },
+          { bg: 0x020505, fog: 0x030707, grid1: 0x00ffff, grid2: 0x004444, accent: 0x44ffff },
+        ],
+        targets: ["ayahuasca", "chacruna"],
+      },
+      {
+        id: "creatures",
+        name: "SACRED CREATURES",
+        subtitle: "Spirit Animals of Ancient Medicine",
+        themes: [
+          { bg: 0x020208, fog: 0x03030c, grid1: 0x4444ff, grid2: 0x111144, accent: 0x6666ff },
+          { bg: 0x040408, fog: 0x06060c, grid1: 0x00ccff, grid2: 0x003344, accent: 0x44ddff },
+          { bg: 0x050306, fog: 0x080408, grid1: 0xcc44ff, grid2: 0x331144, accent: 0xdd66ff },
+          { bg: 0x020406, fog: 0x030608, grid1: 0x00ffaa, grid2: 0x004433, accent: 0x44ffcc },
+          { bg: 0x060404, fog: 0x0a0606, grid1: 0xff8800, grid2: 0x442200, accent: 0xffaa44 },
+        ],
+        targets: ["kamboFrog", "bufoToad"],
+      },
+    ];
+
+    // ═══════════════════════════════════════════════════════════════
+    // GAME STATE
+    // ═══════════════════════════════════════════════════════════════
+    let currentEpisode = 0;
+    let currentTheme = 0;
+    let score = 0;
+    let mouseDown = false;
+    let lastFireTime = 0;
+    const fireRate = 80; // Fast firing
+    const mouse = new THREE.Vector2();
+
+    // ═══════════════════════════════════════════════════════════════
+    // THREE.JS SETUP
+    // ═══════════════════════════════════════════════════════════════
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020805);
+    scene.fog = new THREE.FogExp2(0x021008, 0.012);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
+    camera.position.set(0, 8, 20);
+    camera.lookAt(0, 3, -50);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // Post-processing
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+    bloom.threshold = 0.1;
+    bloom.strength = 0.8;
+    bloom.radius = 0.6;
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+
+    // Lighting
+    const ambient = new THREE.AmbientLight(0x404060, 2);
+    scene.add(ambient);
+    const mainLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    mainLight.position.set(10, 20, 10);
+    scene.add(mainLight);
+    const fillLight = new THREE.DirectionalLight(0x4488ff, 0.8);
+    fillLight.position.set(-10, 10, -10);
+    scene.add(fillLight);
+
+    // Grid
+    const gridHelper = new THREE.GridHelper(400, 80, 0x00ff88, 0x004422);
+    gridHelper.position.y = -5;
+    scene.add(gridHelper);
+
+    // ═══════════════════════════════════════════════════════════════
+    // ABSTRACT TRANSPARENT NOMAD SHIP
+    // Inspired by Freelancer's jellyfish-like alien vessels
+    // ═══════════════════════════════════════════════════════════════
+    function createNomadShip() {
+      const ship = new THREE.Group();
+
+      // Core energy sphere - pulsing heart
+      const coreGeo = new THREE.IcosahedronGeometry(0.4, 2);
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: 0xff0066,
+        transparent: true,
+        opacity: 0.9,
+      });
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      ship.add(core);
+      ship.userData.core = core;
+
+      // Inner energy shell
+      const innerShellGeo = new THREE.IcosahedronGeometry(0.7, 1);
+      const innerShellMat = new THREE.MeshBasicMaterial({
+        color: 0xff3399,
+        transparent: true,
+        opacity: 0.3,
+        wireframe: true,
+      });
+      const innerShell = new THREE.Mesh(innerShellGeo, innerShellMat);
+      ship.add(innerShell);
+      ship.userData.innerShell = innerShell;
+
+      // Main transparent hull - jellyfish dome
+      const hullGeo = new THREE.SphereGeometry(1.2, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.6);
+      const hullMat = new THREE.MeshPhysicalMaterial({
+        color: 0x4488ff,
+        transparent: true,
+        opacity: 0.15,
+        roughness: 0.1,
+        metalness: 0.2,
+        side: THREE.DoubleSide,
+        envMapIntensity: 0.5,
+      });
+      const hull = new THREE.Mesh(hullGeo, hullMat);
+      hull.position.y = 0.2;
+      ship.add(hull);
+
+      // Glowing ring halos (Nomad signature)
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x00ddff,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide,
+      });
+
+      const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.02, 8, 48), ringMat);
+      ring1.rotation.x = Math.PI / 2;
+      ship.add(ring1);
+      ship.userData.ring1 = ring1;
+
+      const ring2Mat = ringMat.clone();
+      ring2Mat.color.setHex(0xff44aa);
+      ring2Mat.opacity = 0.4;
+      const ring2 = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.015, 8, 32), ring2Mat);
+      ring2.rotation.x = Math.PI / 2;
+      ring2.rotation.z = 0.3;
+      ship.add(ring2);
+      ship.userData.ring2 = ring2;
+
+      const ring3Mat = ringMat.clone();
+      ring3Mat.color.setHex(0x44ffaa);
+      ring3Mat.opacity = 0.3;
+      const ring3 = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.01, 8, 64), ring3Mat);
+      ring3.rotation.x = Math.PI / 2.2;
+      ship.add(ring3);
+      ship.userData.ring3 = ring3;
+
+      // Flowing tentacle appendages (6 of them)
+      const tentacles = [];
+      const tentacleMat = new THREE.MeshBasicMaterial({
+        color: 0x00ccff,
+        transparent: true,
+        opacity: 0.4,
+      });
+
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        const points = [];
+        for (let j = 0; j <= 12; j++) {
+          const t = j / 12;
+          const wave = Math.sin(t * Math.PI * 2) * 0.15;
+          points.push(new THREE.Vector3(
+            Math.cos(angle) * (0.8 + t * 1.5) + wave,
+            -t * 2.5 - 0.3,
+            Math.sin(angle) * (0.8 + t * 1.5) + wave
+          ));
+        }
+        const curve = new THREE.CatmullRomCurve3(points);
+        const tentGeo = new THREE.TubeGeometry(curve, 16, 0.06 - t * 0.03, 8, false);
+        const tent = new THREE.Mesh(tentGeo, tentacleMat.clone());
+        ship.add(tent);
+        tentacles.push({ mesh: tent, angle, phase: Math.random() * Math.PI * 2 });
+      }
+      ship.userData.tentacles = tentacles;
+
+      // Energy nodes at tentacle bases
+      const nodeMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.8,
+      });
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        const node = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), nodeMat.clone());
+        node.position.set(Math.cos(angle) * 0.9, -0.3, Math.sin(angle) * 0.9);
+        ship.add(node);
+      }
+
+      // Front probe/sensor
+      const probeMat = new THREE.MeshBasicMaterial({
+        color: 0xff0088,
+        transparent: true,
+        opacity: 0.7,
+      });
+      const probe = new THREE.Mesh(new THREE.ConeGeometry(0.15, 1.5, 6), probeMat);
+      probe.rotation.x = -Math.PI / 2;
+      probe.position.z = -1.8;
+      probe.position.y = 0.2;
+      ship.add(probe);
+
+      ship.scale.setScalar(0.8);
+      ship.position.y = 4;
+
+      return ship;
+    }
+
+    const player = createNomadShip();
+    scene.add(player);
+
+    // ═══════════════════════════════════════════════════════════════
+    // HIGH-QUALITY TARGET MODELS
+    // ═══════════════════════════════════════════════════════════════
+    const targetGroup = new THREE.Group();
+    scene.add(targetGroup);
+
+    // --- PSILOCYBE CUBENSIS (Golden Teacher) ---
+    function createCubensis() {
+      const g = new THREE.Group();
+      g.userData.type = "cubensis";
+      g.userData.name = "PSILOCYBE CUBENSIS";
+      g.userData.aka = "Golden Teacher";
+      g.userData.points = 100;
+
+      // Thick white stem
+      const stemGeo = new THREE.CylinderGeometry(0.25, 0.35, 2.2, 16);
+      const stemMat = new THREE.MeshStandardMaterial({
+        color: 0xf8f4e8, roughness: 0.7,
+        emissive: 0x222211, emissiveIntensity: 0.1
+      });
+      const stem = new THREE.Mesh(stemGeo, stemMat);
+      stem.position.y = -1.1;
+      g.add(stem);
+
+      // Partial veil ring
+      const veilGeo = new THREE.TorusGeometry(0.32, 0.04, 8, 24, Math.PI * 1.7);
+      const veil = new THREE.Mesh(veilGeo, stemMat);
+      veil.rotation.x = Math.PI / 2;
+      veil.rotation.z = Math.random() * Math.PI;
+      veil.position.y = -0.2;
+      g.add(veil);
+
+      // Golden-brown cap - wide and convex
+      const capGeo = new THREE.SphereGeometry(1.2, 32, 24, 0, Math.PI * 2, 0, Math.PI * 0.5);
+      const capMat = new THREE.MeshStandardMaterial({
+        color: 0xc9a227, roughness: 0.5, metalness: 0.1,
+        emissive: 0x3a2a00, emissiveIntensity: 0.2
+      });
+      const cap = new THREE.Mesh(capGeo, capMat);
+      cap.scale.y = 0.5;
+      cap.position.y = 0.15;
+      g.add(cap);
+
+      // Darker center
+      const centerGeo = new THREE.CircleGeometry(0.4, 24);
+      const centerMat = new THREE.MeshStandardMaterial({
+        color: 0x8b6914, roughness: 0.6, side: THREE.DoubleSide
+      });
+      const center = new THREE.Mesh(centerGeo, centerMat);
+      center.rotation.x = -Math.PI / 2;
+      center.position.y = 0.42;
+      g.add(center);
+
+      // Purple-brown gills
+      const gillGeo = new THREE.CircleGeometry(1.1, 48);
+      const gillMat = new THREE.MeshStandardMaterial({
+        color: 0x4a3a4a, roughness: 0.9, side: THREE.DoubleSide
+      });
+      const gills = new THREE.Mesh(gillGeo, gillMat);
+      gills.rotation.x = Math.PI / 2;
+      gills.position.y = 0.02;
+      g.add(gills);
+
+      // Blue bruising spots on stem
+      const bruiseMat = new THREE.MeshStandardMaterial({
+        color: 0x4466aa, emissive: 0x223355, emissiveIntensity: 0.4, roughness: 0.6
+      });
+      for (let i = 0; i < 4; i++) {
+        const bruise = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), bruiseMat);
+        const angle = Math.random() * Math.PI * 2;
+        bruise.position.set(Math.cos(angle) * 0.28, -0.5 - Math.random() * 1, Math.sin(angle) * 0.28);
+        bruise.scale.set(1.5, 0.4, 1);
+        g.add(bruise);
+      }
+
+      return g;
+    }
+
+    // --- LIBERTY CAP (Psilocybe semilanceata) ---
+    function createLibertyCap() {
+      const g = new THREE.Group();
+      g.userData.type = "libertyCap";
+      g.userData.name = "PSILOCYBE SEMILANCEATA";
+      g.userData.aka = "Liberty Cap";
+      g.userData.points = 150;
+
+      // Very thin, wavy stem
+      const stemCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, -1.8, 0),
+        new THREE.Vector3(0.1, -1.2, 0.05),
+        new THREE.Vector3(-0.05, -0.5, -0.03),
+        new THREE.Vector3(0.03, 0, 0),
+      ]);
+      const stemGeo = new THREE.TubeGeometry(stemCurve, 20, 0.06, 12, false);
+      const stemMat = new THREE.MeshStandardMaterial({
+        color: 0xf0e8d0, roughness: 0.8,
+        emissive: 0x111108, emissiveIntensity: 0.1
+      });
+      const stem = new THREE.Mesh(stemGeo, stemMat);
+      g.add(stem);
+
+      // Distinctive conical cap with pointed nipple
+      const capGeo = new THREE.ConeGeometry(0.5, 1.3, 24);
+      const capMat = new THREE.MeshStandardMaterial({
+        color: 0x8b7355, roughness: 0.6,
+        emissive: 0x2a1a10, emissiveIntensity: 0.15
+      });
+      const cap = new THREE.Mesh(capGeo, capMat);
+      cap.position.y = 0.65;
+      g.add(cap);
+
+      // Pronounced nipple/papilla
+      const nippleGeo = new THREE.ConeGeometry(0.12, 0.3, 12);
+      const nipple = new THREE.Mesh(nippleGeo, capMat);
+      nipple.position.y = 1.45;
+      g.add(nipple);
+
+      // Hygrophanous striations (lines when wet)
+      const lineMat = new THREE.MeshBasicMaterial({ color: 0x6a5a45, transparent: true, opacity: 0.5 });
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const line = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.8, 0.01), lineMat);
+        line.position.set(Math.sin(angle) * 0.25, 0.5, Math.cos(angle) * 0.25);
+        line.rotation.y = angle;
+        line.rotation.z = 0.3;
+        g.add(line);
+      }
+
+      g.scale.setScalar(1.4);
+      return g;
+    }
+
+    // --- AMANITA MUSCARIA (Fly Agaric) ---
+    function createAmanita() {
+      const g = new THREE.Group();
+      g.userData.type = "amanita";
+      g.userData.name = "AMANITA MUSCARIA";
+      g.userData.aka = "Fly Agaric";
+      g.userData.points = 120;
+
+      // Thick white stem
+      const stemGeo = new THREE.CylinderGeometry(0.28, 0.45, 2.5, 16);
+      const stemMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff, roughness: 0.7,
+        emissive: 0x111111, emissiveIntensity: 0.1
+      });
+      const stem = new THREE.Mesh(stemGeo, stemMat);
+      stem.position.y = -1.25;
+      g.add(stem);
+
+      // Volva (egg cup base)
+      const volvaGeo = new THREE.SphereGeometry(0.55, 16, 12, 0, Math.PI * 2, Math.PI * 0.3, Math.PI * 0.5);
+      const volva = new THREE.Mesh(volvaGeo, stemMat);
+      volva.position.y = -2.35;
+      volva.rotation.x = Math.PI;
+      g.add(volva);
+
+      // Skirt/annulus ring
+      const skirtGeo = new THREE.TorusGeometry(0.38, 0.06, 8, 24);
+      const skirt = new THREE.Mesh(skirtGeo, stemMat);
+      skirt.rotation.x = Math.PI / 2;
+      skirt.position.y = -0.4;
+      g.add(skirt);
+
+      // Iconic red cap
+      const capGeo = new THREE.SphereGeometry(1.4, 32, 24, 0, Math.PI * 2, 0, Math.PI * 0.55);
+      const capMat = new THREE.MeshStandardMaterial({
+        color: 0xdd2222, roughness: 0.4, metalness: 0.1,
+        emissive: 0x440000, emissiveIntensity: 0.3
+      });
+      const cap = new THREE.Mesh(capGeo, capMat);
+      cap.scale.y = 0.6;
+      cap.position.y = 0.15;
+      g.add(cap);
+
+      // White warts/spots (remnants of universal veil)
+      const wartMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff, roughness: 0.8,
+        emissive: 0x333333, emissiveIntensity: 0.2
+      });
+      for (let i = 0; i < 18; i++) {
+        const wartGeo = new THREE.SphereGeometry(0.08 + Math.random() * 0.08, 8, 6);
+        const wart = new THREE.Mesh(wartGeo, wartMat);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI * 0.45;
+        const r = 1.32;
+        wart.position.set(
+          r * Math.sin(phi) * Math.cos(theta),
+          r * Math.cos(phi) * 0.6 + 0.15,
+          r * Math.sin(phi) * Math.sin(theta)
+        );
+        wart.scale.y = 0.5;
+        g.add(wart);
+      }
+
+      // White gills
+      const gillGeo = new THREE.CircleGeometry(1.3, 48);
+      const gillMat = new THREE.MeshStandardMaterial({ color: 0xffeedd, roughness: 0.9, side: THREE.DoubleSide });
+      const gills = new THREE.Mesh(gillGeo, gillMat);
+      gills.rotation.x = Math.PI / 2;
+      gills.position.y = 0.0;
+      g.add(gills);
+
+      return g;
+    }
+
+    // --- PSILOCYBE AZURESCENS (Flying Saucer) ---
+    function createAzurescens() {
+      const g = new THREE.Group();
+      g.userData.type = "azurescens";
+      g.userData.name = "PSILOCYBE AZURESCENS";
+      g.userData.aka = "Flying Saucer";
+      g.userData.points = 200;
+
+      // Silky white stem with blue staining
+      const stemGeo = new THREE.CylinderGeometry(0.15, 0.22, 2.0, 12);
+      const stemMat = new THREE.MeshStandardMaterial({
+        color: 0xe8e0d0, roughness: 0.75,
+        emissive: 0x1a2a4a, emissiveIntensity: 0.15
+      });
+      const stem = new THREE.Mesh(stemGeo, stemMat);
+      stem.position.y = -1.0;
+      g.add(stem);
+
+      // Wide flat cap with distinctive wavy margin
+      const capPoints = [];
+      for (let i = 0; i <= 48; i++) {
+        const angle = (i / 48) * Math.PI * 2;
+        const wave = 1.1 + Math.sin(angle * 6) * 0.15 + Math.sin(angle * 3) * 0.1;
+        capPoints.push(new THREE.Vector2(Math.cos(angle) * wave, Math.sin(angle) * wave));
+      }
+      const capShape = new THREE.Shape(capPoints);
+      const capGeo = new THREE.ExtrudeGeometry(capShape, { depth: 0.35, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.15, bevelSegments: 4 });
+      const capMat = new THREE.MeshStandardMaterial({
+        color: 0x5a4a35, roughness: 0.55,
+        emissive: 0x1a1510, emissiveIntensity: 0.2
+      });
+      const cap = new THREE.Mesh(capGeo, capMat);
+      cap.rotation.x = -Math.PI / 2;
+      cap.position.y = 0.25;
+      g.add(cap);
+
+      // Prominent caramel umbo (center bump)
+      const umboGeo = new THREE.SphereGeometry(0.35, 16, 12);
+      const umboMat = new THREE.MeshStandardMaterial({
+        color: 0xa08030, roughness: 0.5,
+        emissive: 0x302008, emissiveIntensity: 0.25
+      });
+      const umbo = new THREE.Mesh(umboGeo, umboMat);
+      umbo.scale.y = 0.4;
+      umbo.position.y = 0.55;
+      g.add(umbo);
+
+      // Heavy blue bruising
+      const bruiseMat = new THREE.MeshStandardMaterial({
+        color: 0x3355aa, emissive: 0x2244aa, emissiveIntensity: 0.5, roughness: 0.6
+      });
+      for (let i = 0; i < 6; i++) {
+        const bruise = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), bruiseMat);
+        const angle = Math.random() * Math.PI * 2;
+        bruise.position.set(Math.cos(angle) * 0.18, -0.4 - Math.random() * 1.2, Math.sin(angle) * 0.18);
+        bruise.scale.set(1.2, 0.3, 0.8);
+        g.add(bruise);
+      }
+
+      return g;
+    }
+
+    // --- PANAEOLUS CYANESCENS (Blue Meanie) ---
+    function createBlueMeanie() {
+      const g = new THREE.Group();
+      g.userData.type = "blueMeanie";
+      g.userData.name = "PANAEOLUS CYANESCENS";
+      g.userData.aka = "Blue Meanie";
+      g.userData.points = 175;
+
+      // Thin pale stem
+      const stemGeo = new THREE.CylinderGeometry(0.08, 0.12, 1.8, 10);
+      const stemMat = new THREE.MeshStandardMaterial({
+        color: 0xd0c8b8, roughness: 0.8,
+        emissive: 0x1a2040, emissiveIntensity: 0.2
+      });
+      const stem = new THREE.Mesh(stemGeo, stemMat);
+      stem.position.y = -0.9;
+      g.add(stem);
+
+      // Hemispheric to bell-shaped cap
+      const capGeo = new THREE.SphereGeometry(0.7, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.55);
+      const capMat = new THREE.MeshStandardMaterial({
+        color: 0xb8a888, roughness: 0.6,
+        emissive: 0x151510, emissiveIntensity: 0.15
+      });
+      const cap = new THREE.Mesh(capGeo, capMat);
+      cap.scale.y = 0.75;
+      cap.position.y = 0.1;
+      g.add(cap);
+
+      // Characteristic mottled black gills
+      const gillGeo = new THREE.CircleGeometry(0.65, 32);
+      const gillMat = new THREE.MeshStandardMaterial({
+        color: 0x1a1a22, roughness: 0.95, side: THREE.DoubleSide,
+        emissive: 0x0a0a15, emissiveIntensity: 0.3
+      });
+      const gills = new THREE.Mesh(gillGeo, gillMat);
+      gills.rotation.x = Math.PI / 2;
+      gills.position.y = -0.02;
+      g.add(gills);
+
+      // Intense blue bruising (signature feature)
+      const bruiseMat = new THREE.MeshStandardMaterial({
+        color: 0x2244cc, emissive: 0x3355ff, emissiveIntensity: 0.6, roughness: 0.5
+      });
+      for (let i = 0; i < 5; i++) {
+        const bruise = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), bruiseMat);
+        const angle = Math.random() * Math.PI * 2;
+        bruise.position.set(Math.cos(angle) * 0.1, -0.2 - Math.random() * 1.2, Math.sin(angle) * 0.1);
+        bruise.scale.set(1, 0.3, 0.7);
+        g.add(bruise);
+      }
+
+      // Cap also shows blue bruising
+      for (let i = 0; i < 3; i++) {
+        const capBruise = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), bruiseMat);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * 0.4;
+        capBruise.position.set(
+          Math.sin(phi) * Math.cos(theta) * 0.6,
+          Math.cos(phi) * 0.5,
+          Math.sin(phi) * Math.sin(theta) * 0.6
+        );
+        capBruise.scale.set(1.5, 0.4, 1);
+        g.add(capBruise);
+      }
+
+      g.scale.setScalar(1.3);
+      return g;
+    }
+
+    // --- PEYOTE CACTUS ---
+    function createPeyote() {
+      const g = new THREE.Group();
+      g.userData.type = "peyote";
+      g.userData.name = "LOPHOPHORA WILLIAMSII";
+      g.userData.aka = "Peyote";
+      g.userData.points = 200;
+
+      // Blue-green button body
+      const bodyGeo = new THREE.SphereGeometry(1.0, 32, 24);
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0x4a6a5a, roughness: 0.75,
+        emissive: 0x1a2a20, emissiveIntensity: 0.2
+      });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.scale.y = 0.45;
+      g.add(body);
+
+      // Distinct ribs (8-13 segments)
+      const ribMat = new THREE.MeshStandardMaterial({
+        color: 0x3a5a4a, roughness: 0.8,
+        emissive: 0x102015, emissiveIntensity: 0.15
+      });
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const ribGeo = new THREE.CapsuleGeometry(0.12, 0.8, 6, 12);
+        const rib = new THREE.Mesh(ribGeo, ribMat);
+        rib.position.set(Math.cos(angle) * 0.75, 0, Math.sin(angle) * 0.75);
+        rib.rotation.z = Math.PI / 2;
+        rib.rotation.y = angle;
+        rib.scale.y = 0.5;
+        g.add(rib);
+      }
+
+      // Woolly tufts (areoles with trichomes)
+      const woolMat = new THREE.MeshStandardMaterial({
+        color: 0xf5ead5, roughness: 1.0,
+        emissive: 0x333322, emissiveIntensity: 0.2
+      });
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2 + Math.PI / 8;
+        const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), woolMat);
+        tuft.position.set(Math.cos(angle) * 0.55, 0.25, Math.sin(angle) * 0.55);
+        tuft.scale.y = 0.6;
+        g.add(tuft);
+      }
+
+      // Central crown tuft
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 8), woolMat);
+      crown.position.y = 0.35;
+      crown.scale.y = 0.5;
+      g.add(crown);
+
+      // Pink flower (when blooming)
+      if (Math.random() > 0.4) {
+        const flowerMat = new THREE.MeshStandardMaterial({
+          color: 0xff88aa, roughness: 0.5, side: THREE.DoubleSide,
+          emissive: 0x661133, emissiveIntensity: 0.3
+        });
+        for (let i = 0; i < 10; i++) {
+          const pAngle = (i / 10) * Math.PI * 2;
+          const petal = new THREE.Mesh(new THREE.CircleGeometry(0.18, 8), flowerMat);
+          petal.position.set(Math.cos(pAngle) * 0.15, 0.5, Math.sin(pAngle) * 0.15);
+          petal.rotation.x = -Math.PI / 2.5;
+          petal.rotation.z = pAngle;
+          g.add(petal);
+        }
+        // Yellow center
+        const centerMat = new THREE.MeshBasicMaterial({ color: 0xffdd44 });
+        const flowerCenter = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), centerMat);
+        flowerCenter.position.y = 0.52;
+        flowerCenter.scale.y = 0.5;
+        g.add(flowerCenter);
+      }
+
+      g.position.y = 0.3;
+      return g;
+    }
+
+    // --- SAN PEDRO CACTUS ---
+    function createSanPedro() {
+      const g = new THREE.Group();
+      g.userData.type = "sanPedro";
+      g.userData.name = "ECHINOPSIS PACHANOI";
+      g.userData.aka = "San Pedro";
+      g.userData.points = 180;
+
+      // Tall columnar body
+      const bodyGeo = new THREE.CylinderGeometry(0.6, 0.7, 4.5, 8);
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0x5a9a6a, roughness: 0.7,
+        emissive: 0x1a3a20, emissiveIntensity: 0.2
+      });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 0.5;
+      g.add(body);
+
+      // 6-8 vertical ribs
+      const ribMat = new THREE.MeshStandardMaterial({
+        color: 0x4a8a5a, roughness: 0.8,
+        emissive: 0x102a15, emissiveIntensity: 0.15
+      });
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const ribGeo = new THREE.BoxGeometry(0.18, 4.3, 0.1);
+        const rib = new THREE.Mesh(ribGeo, ribMat);
+        rib.position.set(Math.cos(angle) * 0.62, 0.5, Math.sin(angle) * 0.62);
+        rib.rotation.y = angle;
+        g.add(rib);
+      }
+
+      // Areoles with small spines
+      const spineMat = new THREE.MeshStandardMaterial({
+        color: 0xd4c4a4, roughness: 0.9,
+        emissive: 0x222211, emissiveIntensity: 0.1
+      });
+      for (let row = 0; row < 6; row++) {
+        for (let i = 0; i < 8; i++) {
+          const angle = (i / 8) * Math.PI * 2 + (row % 2) * (Math.PI / 8);
+          // Areole (fuzzy dot)
+          const areole = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 4), spineMat);
+          areole.position.set(
+            Math.cos(angle) * 0.68,
+            -1.5 + row * 0.75,
+            Math.sin(angle) * 0.68
+          );
+          g.add(areole);
+          // Small spines
+          for (let s = 0; s < 3; s++) {
+            const spine = new THREE.Mesh(new THREE.ConeGeometry(0.015, 0.2, 4), spineMat);
+            spine.position.copy(areole.position);
+            spine.position.x += Math.cos(angle) * 0.1;
+            spine.position.z += Math.sin(angle) * 0.1;
+            spine.rotation.z = -Math.PI / 2 + (s - 1) * 0.4;
+            spine.rotation.y = angle;
+            g.add(spine);
+          }
+        }
+      }
+
+      // Rounded top
+      const topGeo = new THREE.SphereGeometry(0.6, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5);
+      const top = new THREE.Mesh(topGeo, bodyMat);
+      top.position.y = 2.75;
+      g.add(top);
+
+      g.position.y = -1;
+      return g;
+    }
+
+    // --- AYAHUASCA VINE ---
+    function createAyahuasca() {
+      const g = new THREE.Group();
+      g.userData.type = "ayahuasca";
+      g.userData.name = "BANISTERIOPSIS CAAPI";
+      g.userData.aka = "Ayahuasca Vine";
+      g.userData.points = 175;
+
+      const vineMat = new THREE.MeshStandardMaterial({
+        color: 0x5a4535, roughness: 0.85,
+        emissive: 0x1a1510, emissiveIntensity: 0.15
+      });
+
+      // Multiple intertwined woody vines
+      for (let v = 0; v < 4; v++) {
+        const points = [];
+        const offset = (v / 4) * Math.PI * 2;
+        const radius = 0.25 + (v % 2) * 0.1;
+        for (let i = 0; i <= 24; i++) {
+          const t = i / 24;
+          const twist = Math.sin(t * Math.PI * 4 + offset) * radius;
+          const twist2 = Math.cos(t * Math.PI * 4 + offset) * radius;
+          points.push(new THREE.Vector3(twist, t * 4 - 2, twist2));
+        }
+        const curve = new THREE.CatmullRomCurve3(points);
+        const vineGeo = new THREE.TubeGeometry(curve, 32, 0.1 - v * 0.015, 8, false);
+        const vine = new THREE.Mesh(vineGeo, vineMat);
+        g.add(vine);
+
+        // Bark texture bumps
+        for (let b = 0; b < 8; b++) {
+          const bumpT = Math.random();
+          const bumpPos = curve.getPoint(bumpT);
+          const bump = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), vineMat);
+          bump.position.copy(bumpPos);
+          bump.position.x += (Math.random() - 0.5) * 0.1;
+          bump.position.z += (Math.random() - 0.5) * 0.1;
+          g.add(bump);
+        }
+      }
+
+      // Large heart-shaped leaves
+      const leafMat = new THREE.MeshStandardMaterial({
+        color: 0x2a6a2a, roughness: 0.75, side: THREE.DoubleSide,
+        emissive: 0x0a2a0a, emissiveIntensity: 0.2
+      });
+
+      for (let i = 0; i < 10; i++) {
+        const leafShape = new THREE.Shape();
+        leafShape.moveTo(0, 0);
+        leafShape.bezierCurveTo(0.3, 0.2, 0.3, 0.6, 0, 0.8);
+        leafShape.bezierCurveTo(-0.3, 0.6, -0.3, 0.2, 0, 0);
+
+        const leafGeo = new THREE.ShapeGeometry(leafShape);
+        const leaf = new THREE.Mesh(leafGeo, leafMat);
+        const y = (Math.random() - 0.5) * 3.5;
+        const angle = Math.random() * Math.PI * 2;
+        leaf.position.set(Math.cos(angle) * 0.5, y, Math.sin(angle) * 0.5);
+        leaf.rotation.y = angle + Math.PI;
+        leaf.rotation.x = (Math.random() - 0.5) * 0.6;
+        leaf.scale.setScalar(0.5 + Math.random() * 0.3);
+        g.add(leaf);
+
+        // Leaf vein
+        const veinGeo = new THREE.BoxGeometry(0.02, 0.6, 0.01);
+        const vein = new THREE.Mesh(veinGeo, new THREE.MeshBasicMaterial({ color: 0x1a4a1a }));
+        vein.position.copy(leaf.position);
+        vein.rotation.copy(leaf.rotation);
+        vein.position.y += 0.3;
+        g.add(vein);
+      }
+
+      return g;
+    }
+
+    // --- CHACRUNA (DMT leaf companion) ---
+    function createChacruna() {
+      const g = new THREE.Group();
+      g.userData.type = "chacruna";
+      g.userData.name = "PSYCHOTRIA VIRIDIS";
+      g.userData.aka = "Chacruna";
+      g.userData.points = 160;
+
+      // Woody stem
+      const stemGeo = new THREE.CylinderGeometry(0.12, 0.18, 2.5, 8);
+      const stemMat = new THREE.MeshStandardMaterial({
+        color: 0x4a3a2a, roughness: 0.85,
+        emissive: 0x151008, emissiveIntensity: 0.1
+      });
+      const stem = new THREE.Mesh(stemGeo, stemMat);
+      g.add(stem);
+
+      // Glossy dark green leaves in pairs
+      const leafMat = new THREE.MeshStandardMaterial({
+        color: 0x1a4a1a, roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide,
+        emissive: 0x0a2a0a, emissiveIntensity: 0.25
+      });
+
+      for (let pair = 0; pair < 4; pair++) {
+        const y = -0.8 + pair * 0.7;
+        const baseAngle = pair * Math.PI / 4;
+
+        [-1, 1].forEach(side => {
+          const leafShape = new THREE.Shape();
+          leafShape.moveTo(0, 0);
+          leafShape.bezierCurveTo(0.15, 0.15, 0.2, 0.4, 0.1, 0.7);
+          leafShape.bezierCurveTo(0, 0.8, -0.1, 0.7, -0.1, 0.7);
+          leafShape.bezierCurveTo(-0.2, 0.4, -0.15, 0.15, 0, 0);
+
+          const leaf = new THREE.Mesh(new THREE.ShapeGeometry(leafShape), leafMat);
+          leaf.position.set(side * 0.3, y, 0);
+          leaf.rotation.y = baseAngle + side * Math.PI / 3;
+          leaf.rotation.z = side * 0.4;
+          leaf.scale.setScalar(1.2);
+          g.add(leaf);
+        });
+      }
+
+      // Small white flower clusters
+      const flowerMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff, roughness: 0.6,
+        emissive: 0x444444, emissiveIntensity: 0.3
+      });
+      for (let i = 0; i < 3; i++) {
+        const cluster = new THREE.Group();
+        for (let f = 0; f < 6; f++) {
+          const flower = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), flowerMat);
+          flower.position.set(
+            (Math.random() - 0.5) * 0.15,
+            (Math.random() - 0.5) * 0.1,
+            (Math.random() - 0.5) * 0.15
+          );
+          cluster.add(flower);
+        }
+        cluster.position.set(
+          (Math.random() - 0.5) * 0.5,
+          0.5 + i * 0.4,
+          (Math.random() - 0.5) * 0.5
+        );
+        g.add(cluster);
+      }
+
+      g.position.y = 0.5;
+      return g;
+    }
+
+    // --- KAMBO FROG ---
+    function createKamboFrog() {
+      const g = new THREE.Group();
+      g.userData.type = "kamboFrog";
+      g.userData.name = "PHYLLOMEDUSA BICOLOR";
+      g.userData.aka = "Giant Monkey Frog";
+      g.userData.points = 250;
+
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0x44aa44, roughness: 0.6,
+        emissive: 0x114411, emissiveIntensity: 0.25
+      });
+
+      // Streamlined body
+      const bodyGeo = new THREE.SphereGeometry(0.8, 24, 18);
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.scale.set(1, 0.65, 1.3);
+      g.add(body);
+
+      // Distinct head
+      const headGeo = new THREE.SphereGeometry(0.45, 20, 14);
+      const head = new THREE.Mesh(headGeo, bodyMat);
+      head.position.set(0, 0.15, -0.75);
+      head.scale.set(1.1, 0.85, 1);
+      g.add(head);
+
+      // Large golden eyes with horizontal pupils (characteristic)
+      const eyeWhiteMat = new THREE.MeshStandardMaterial({
+        color: 0xf8f0d0, roughness: 0.3,
+        emissive: 0x444430, emissiveIntensity: 0.3
+      });
+      const pupilMat = new THREE.MeshBasicMaterial({ color: 0x101010 });
+
+      [-1, 1].forEach(side => {
+        // Eye bulge
+        const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 10), eyeWhiteMat);
+        eyeWhite.position.set(side * 0.25, 0.35, -0.9);
+        g.add(eyeWhite);
+
+        // Golden iris
+        const irisMat = new THREE.MeshStandardMaterial({
+          color: 0xddaa22, roughness: 0.4,
+          emissive: 0x664400, emissiveIntensity: 0.4
+        });
+        const iris = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), irisMat);
+        iris.position.set(side * 0.25, 0.37, -1.02);
+        g.add(iris);
+
+        // Horizontal slit pupil
+        const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.02), pupilMat);
+        pupil.position.set(side * 0.25, 0.37, -1.12);
+        g.add(pupil);
+      });
+
+      // Long legs with suction cup toes
+      const legMat = bodyMat.clone();
+
+      // Front legs (thin, long)
+      [-1, 1].forEach(side => {
+        const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.5, 4, 8), legMat);
+        upperArm.position.set(side * 0.55, -0.1, -0.4);
+        upperArm.rotation.z = side * 0.7;
+        upperArm.rotation.x = -0.4;
+        g.add(upperArm);
+
+        const forearm = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.4, 4, 8), legMat);
+        forearm.position.set(side * 0.85, -0.35, -0.55);
+        forearm.rotation.z = side * 0.3;
+        g.add(forearm);
+
+        // Hand with suction fingers
+        for (let f = 0; f < 4; f++) {
+          const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.025, 0.12, 4, 6), legMat);
+          finger.position.set(
+            side * 0.9 + (f - 1.5) * 0.04 * side,
+            -0.55,
+            -0.6 + f * 0.02
+          );
+          g.add(finger);
+          // Suction disk
+          const disk = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4),
+            new THREE.MeshStandardMaterial({ color: 0xff8866, roughness: 0.5, emissive: 0x442211, emissiveIntensity: 0.3 }));
+          disk.position.copy(finger.position);
+          disk.position.y -= 0.08;
+          disk.scale.y = 0.4;
+          g.add(disk);
+        }
+      });
+
+      // Back legs (larger, folded)
+      [-1, 1].forEach(side => {
+        const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.6, 4, 8), legMat);
+        thigh.position.set(side * 0.5, -0.2, 0.5);
+        thigh.rotation.z = side * 1.2;
+        thigh.rotation.x = 0.3;
+        g.add(thigh);
+
+        const calf = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.5, 4, 8), legMat);
+        calf.position.set(side * 0.9, -0.45, 0.6);
+        calf.rotation.z = side * 0.5;
+        g.add(calf);
+
+        // Webbed foot
+        const footMat = new THREE.MeshStandardMaterial({
+          color: 0x55bb55, roughness: 0.6, side: THREE.DoubleSide,
+          emissive: 0x113311, emissiveIntensity: 0.2
+        });
+        const foot = new THREE.Mesh(new THREE.CircleGeometry(0.18, 5), footMat);
+        foot.position.set(side * 1.05, -0.6, 0.7);
+        foot.rotation.x = -Math.PI / 2;
+        foot.scale.set(1.5, 1, 1);
+        g.add(foot);
+      });
+
+      // White belly stripe
+      const bellyMat = new THREE.MeshStandardMaterial({
+        color: 0xf0e8d0, roughness: 0.7,
+        emissive: 0x222211, emissiveIntensity: 0.15
+      });
+      const belly = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12), bellyMat);
+      belly.position.y = -0.25;
+      belly.scale.set(0.7, 0.4, 1);
+      g.add(belly);
+
+      g.position.y = 0.6;
+      g.scale.setScalar(1.1);
+      return g;
+    }
+
+    // --- BUFO TOAD (Sonoran Desert Toad) ---
+    function createBufoToad() {
+      const g = new THREE.Group();
+      g.userData.type = "bufoToad";
+      g.userData.name = "INCILIUS ALVARIUS";
+      g.userData.aka = "Sonoran Desert Toad";
+      g.userData.points = 300;
+
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0x6a5a4a, roughness: 0.85,
+        emissive: 0x1a1510, emissiveIntensity: 0.15
+      });
+
+      // Large, squat body
+      const bodyGeo = new THREE.SphereGeometry(1.1, 24, 18);
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.scale.set(1.2, 0.55, 1);
+      g.add(body);
+
+      // Broad head
+      const headGeo = new THREE.SphereGeometry(0.55, 18, 14);
+      const head = new THREE.Mesh(headGeo, bodyMat);
+      head.position.set(0, 0.08, -0.9);
+      head.scale.set(1.15, 0.75, 0.9);
+      g.add(head);
+
+      // DISTINCTIVE: Large parotoid glands (contain 5-MeO-DMT)
+      const glandMat = new THREE.MeshStandardMaterial({
+        color: 0x5a4a38, roughness: 0.9,
+        emissive: 0x3a2a1a, emissiveIntensity: 0.25
+      });
+      [-1, 1].forEach(side => {
+        const gland = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), glandMat);
+        gland.position.set(side * 0.45, 0.12, -0.55);
+        gland.scale.set(1.3, 0.6, 0.9);
+        g.add(gland);
+
+        // Gland pores (where secretion comes from)
+        for (let p = 0; p < 5; p++) {
+          const pore = new THREE.Mesh(new THREE.SphereGeometry(0.03, 4, 4),
+            new THREE.MeshBasicMaterial({ color: 0x2a1a0a }));
+          pore.position.copy(gland.position);
+          pore.position.x += (Math.random() - 0.5) * 0.2 * side;
+          pore.position.y += (Math.random() - 0.5) * 0.1;
+          pore.position.z += (Math.random() - 0.5) * 0.15;
+          g.add(pore);
+        }
+      });
+
+      // Large copper eyes
+      const eyeMat = new THREE.MeshStandardMaterial({
+        color: 0xcc9944, roughness: 0.35,
+        emissive: 0x553311, emissiveIntensity: 0.4
+      });
+      [-1, 1].forEach(side => {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), eyeMat);
+        eye.position.set(side * 0.32, 0.25, -1.0);
+        g.add(eye);
+
+        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6),
+          new THREE.MeshBasicMaterial({ color: 0x0a0a0a }));
+        pupil.position.set(side * 0.32, 0.27, -1.12);
+        g.add(pupil);
+      });
+
+      // Warty skin texture
+      const wartMat = new THREE.MeshStandardMaterial({
+        color: 0x5a4a3a, roughness: 0.95,
+        emissive: 0x151008, emissiveIntensity: 0.1
+      });
+      for (let i = 0; i < 35; i++) {
+        const wart = new THREE.Mesh(new THREE.SphereGeometry(0.04 + Math.random() * 0.05, 6, 4), wartMat);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI * 0.5;
+        wart.position.set(
+          Math.sin(phi) * Math.cos(theta) * 1.0,
+          Math.cos(phi) * 0.45 + 0.05,
+          Math.sin(phi) * Math.sin(theta) * 0.9
+        );
+        g.add(wart);
+      }
+
+      // Short stubby legs
+      [-1, 1].forEach(side => {
+        // Front leg
+        const frontLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.35, 4, 8), bodyMat);
+        frontLeg.position.set(side * 0.75, -0.25, -0.55);
+        frontLeg.rotation.z = side * 0.6;
+        g.add(frontLeg);
+
+        // Back leg
+        const backLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.45, 4, 8), bodyMat);
+        backLeg.position.set(side * 0.85, -0.25, 0.4);
+        backLeg.rotation.z = side * 0.8;
+        g.add(backLeg);
+
+        // Feet
+        const foot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), bodyMat);
+        foot.position.set(side * 0.95, -0.45, -0.6);
+        foot.scale.set(1.4, 0.4, 1.2);
+        g.add(foot);
+
+        const backFoot = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), bodyMat);
+        backFoot.position.set(side * 1.1, -0.45, 0.55);
+        backFoot.scale.set(1.6, 0.4, 1.4);
+        g.add(backFoot);
+      });
+
+      // Pale underside
+      const bellyMat = new THREE.MeshStandardMaterial({
+        color: 0xd0c8b0, roughness: 0.8,
+        emissive: 0x1a1815, emissiveIntensity: 0.1
+      });
+      const belly = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12), bellyMat);
+      belly.position.y = -0.2;
+      belly.scale.set(1, 0.35, 0.85);
+      g.add(belly);
+
+      g.position.y = 0.5;
+      return g;
+    }
+
+    // Target factory lookup
+    const TARGET_FACTORIES = {
+      cubensis: createCubensis,
+      libertyCap: createLibertyCap,
+      amanita: createAmanita,
+      azurescens: createAzurescens,
+      blueMeanie: createBlueMeanie,
+      peyote: createPeyote,
+      sanPedro: createSanPedro,
+      ayahuasca: createAyahuasca,
+      chacruna: createChacruna,
+      kamboFrog: createKamboFrog,
+      bufoToad: createBufoToad,
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    // SPAWN SYSTEM - Reduced density, narrower field
+    // ═══════════════════════════════════════════════════════════════
+    function spawnTarget() {
+      const episode = EPISODES[currentEpisode];
+      const targetType = episode.targets[Math.floor(Math.random() * episode.targets.length)];
+      const factory = TARGET_FACTORIES[targetType];
+      if (!factory) return;
+
+      const target = factory();
+      target.position.set(
+        (Math.random() - 0.5) * 35, // Narrower field (was 60)
+        1 + Math.random() * 4,
+        -100 - Math.random() * 30
+      );
+      target.userData.speed = 0.12 + Math.random() * 0.08; // Slower
+      target.userData.rotSpeed = (Math.random() - 0.5) * 0.015;
+      target.userData.bobPhase = Math.random() * Math.PI * 2;
+
+      targetGroup.add(target);
+    }
+
+    let spawnTimer = 0;
+    const spawnInterval = 1800; // Spawn every 1.8 seconds (was 0.8)
+
+    // ═══════════════════════════════════════════════════════════════
+    // SIMPLE POINT-AND-SHOOT
+    // ═══════════════════════════════════════════════════════════════
+    const bullets = [];
+    const raycaster = new THREE.Raycaster();
+    const aimPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 50);
+
+    function fireBullet() {
+      const now = performance.now();
+      if (now - lastFireTime < fireRate) return;
+      lastFireTime = now;
+
+      raycaster.setFromCamera(mouse, camera);
+      const target = new THREE.Vector3();
+      raycaster.ray.intersectPlane(aimPlane, target);
+
+      const episode = EPISODES[currentEpisode];
+      const theme = episode.themes[currentTheme];
+
+      const geo = new THREE.SphereGeometry(0.15, 8, 6);
+      const mat = new THREE.MeshBasicMaterial({
+        color: theme.accent,
+        transparent: true,
+        opacity: 0.9
+      });
+      const bullet = new THREE.Mesh(geo, mat);
+
+      // Add glow trail
+      const trailGeo = new THREE.CylinderGeometry(0.08, 0.02, 1.5, 6);
+      trailGeo.rotateX(Math.PI / 2);
+      const trailMat = new THREE.MeshBasicMaterial({
+        color: theme.accent, transparent: true, opacity: 0.4
+      });
+      const trail = new THREE.Mesh(trailGeo, trailMat);
+      trail.position.z = 0.8;
+      bullet.add(trail);
+
+      bullet.position.copy(player.position);
+      bullet.position.z -= 2;
+
+      const dir = new THREE.Vector3().subVectors(target, bullet.position).normalize().multiplyScalar(5);
+      bullet.userData.vel = dir;
+      bullet.lookAt(target);
+
+      scene.add(bullet);
+      bullets.push(bullet);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // EPISODE MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════
+    function showEpisodeOverlay() {
+      const episode = EPISODES[currentEpisode];
+      const theme = episode.themes[0];
+
+      const overlay = document.getElementById('episode-overlay');
+      const title = document.getElementById('overlay-title');
+      const subtitle = document.getElementById('overlay-subtitle');
+
+      title.textContent = episode.name;
+      title.style.color = '#' + new THREE.Color(theme.accent).getHexString();
+      subtitle.textContent = episode.subtitle;
+
+      overlay.classList.add('active');
+
+      setTimeout(() => {
+        overlay.classList.remove('active');
+      }, 2500);
+    }
+
+    function switchEpisode(index) {
+      currentEpisode = index % EPISODES.length;
+      currentTheme = 0;
+
+      // Clear existing targets
+      while (targetGroup.children.length > 0) {
+        targetGroup.remove(targetGroup.children[0]);
+      }
+
+      // Update UI
+      const episode = EPISODES[currentEpisode];
+      document.getElementById('episode-display').textContent =
+        `EPISODE ${['I', 'II', 'III', 'IV'][currentEpisode]}: ${episode.name}`;
+
+      showEpisodeOverlay();
+    }
+
+    document.getElementById('nextEpisodeBtn').onclick = () => switchEpisode(currentEpisode + 1);
+
+    // ═══════════════════════════════════════════════════════════════
+    // THEME TRANSITIONS
+    // ═══════════════════════════════════════════════════════════════
+    let themeChangeTime = 0;
+    const themeInterval = 8000 + Math.random() * 7000;
+
+    function updateTheme(delta) {
+      const episode = EPISODES[currentEpisode];
+      const theme = episode.themes[currentTheme];
+      const alpha = Math.min(delta * 0.5, 1);
+
+      scene.background.lerp(new THREE.Color(theme.bg), alpha);
+      scene.fog.color.lerp(new THREE.Color(theme.fog), alpha);
+
+      const mats = Array.isArray(gridHelper.material) ? gridHelper.material : [gridHelper.material];
+      if (mats[0]) mats[0].color.lerp(new THREE.Color(theme.grid1), alpha);
+      if (mats[1]) mats[1].color.lerp(new THREE.Color(theme.grid2), alpha);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // INPUT HANDLING
+    // ═══════════════════════════════════════════════════════════════
+    const crosshair = document.getElementById('crosshair');
+
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      crosshair.style.left = e.clientX + 'px';
+      crosshair.style.top = e.clientY + 'px';
+    });
+
+    window.addEventListener('mousedown', () => { mouseDown = true; });
+    window.addEventListener('mouseup', () => { mouseDown = false; });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'h') window.parent.postMessage('toggle-ui', '*');
+      if (e.key === ' ') e.preventDefault(); // Prevent scroll
+    });
+
+    // Beat messages for theme changes
+    window.addEventListener('message', (event) => {
+      if (event.data?.type === 'audio-beat') {
+        if (performance.now() - themeChangeTime > themeInterval) {
+          currentTheme = (currentTheme + 1) % EPISODES[currentEpisode].themes.length;
+          themeChangeTime = performance.now();
+        }
+      }
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    // ANIMATION LOOP
+    // ═══════════════════════════════════════════════════════════════
+    let lastTime = performance.now();
+    const smoothMouse = new THREE.Vector2();
+    const targetName = document.getElementById('target-name');
+
+    function animate(time) {
+      requestAnimationFrame(animate);
+      const now = time || performance.now();
+      const delta = (now - lastTime) / 1000;
+      lastTime = now;
+
+      // Smooth mouse
+      smoothMouse.lerp(mouse, 0.12);
+
+      // Fallback theme change
+      if (now - themeChangeTime > themeInterval) {
+        currentTheme = (currentTheme + 1) % EPISODES[currentEpisode].themes.length;
+        themeChangeTime = now;
+      }
+      updateTheme(delta);
+
+      // Ship movement
+      const targetX = smoothMouse.x * 18;
+      const targetY = THREE.MathUtils.clamp(smoothMouse.y * 3 + 5, 2, 10);
+      player.position.x += (targetX - player.position.x) * 0.08;
+      player.position.y += (targetY - player.position.y) * 0.08;
+
+      player.rotation.z = -smoothMouse.x * 0.2;
+      player.rotation.x = -smoothMouse.y * 0.1;
+
+      // Animate ship parts
+      if (player.userData.core) {
+        player.userData.core.rotation.y += delta * 2;
+        player.userData.core.rotation.x += delta;
+        const pulse = 1 + Math.sin(now * 0.006) * 0.2;
+        player.userData.core.scale.setScalar(pulse);
+      }
+      if (player.userData.innerShell) {
+        player.userData.innerShell.rotation.y -= delta * 1.5;
+        player.userData.innerShell.rotation.z += delta * 0.5;
+      }
+      if (player.userData.ring1) player.userData.ring1.rotation.z += delta * 0.4;
+      if (player.userData.ring2) player.userData.ring2.rotation.z -= delta * 0.6;
+      if (player.userData.ring3) player.userData.ring3.rotation.z += delta * 0.2;
+
+      // Animate tentacles
+      if (player.userData.tentacles) {
+        player.userData.tentacles.forEach((t, i) => {
+          const wave = Math.sin(now * 0.003 + t.phase) * 0.1;
+          t.mesh.rotation.y = wave;
+        });
+      }
+
+      // Fire if holding mouse
+      if (mouseDown) {
+        fireBullet();
+      }
+
+      // Spawn targets
+      spawnTimer += delta * 1000;
+      if (spawnTimer > spawnInterval) {
+        spawnTarget();
+        spawnTimer = 0;
+      }
+
+      // Grid scroll
+      gridHelper.position.z = (now * 0.01) % 10;
+
+      // Update bullets
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.position.add(b.userData.vel);
+        if (b.position.z < -150) {
+          scene.remove(b);
+          bullets.splice(i, 1);
+        }
+      }
+
+      // Update targets
+      let hoveredTarget = null;
+      const screenCenter = new THREE.Vector2(0, 0);
+
+      for (let i = targetGroup.children.length - 1; i >= 0; i--) {
+        const t = targetGroup.children[i];
+
+        t.position.z += t.userData.speed;
+        t.rotation.y += t.userData.rotSpeed;
+
+        // Gentle bob
+        const bob = Math.sin(t.userData.bobPhase + now * 0.002) * 0.008;
+        t.position.y += bob;
+
+        // Remove if past
+        if (t.position.z > 15) {
+          targetGroup.remove(t);
+          continue;
+        }
+
+        // Check if mouse is near this target (for info display)
+        const screenPos = t.position.clone().project(camera);
+        const dist = new THREE.Vector2(screenPos.x, screenPos.y).distanceTo(mouse);
+        if (dist < 0.3 && t.position.z < 0) {
+          hoveredTarget = t;
+        }
+
+        // Collision
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          const b = bullets[j];
+          if (b.position.distanceTo(t.position) < 2.5) {
+            score += t.userData.points || 100;
+            document.getElementById('score').textContent = score;
+
+            targetGroup.remove(t);
+            scene.remove(b);
+            bullets.splice(j, 1);
+            break;
+          }
+        }
+      }
+
+      // Update target name display
+      if (hoveredTarget && hoveredTarget.userData.name) {
+        targetName.textContent = `${hoveredTarget.userData.name} — "${hoveredTarget.userData.aka}"`;
+        targetName.classList.add('visible');
+        const theme = EPISODES[currentEpisode].themes[currentTheme];
+        targetName.style.color = '#' + new THREE.Color(theme.accent).getHexString();
+      } else {
+        targetName.classList.remove('visible');
+      }
+
+      composer.render();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // INITIALIZATION
+    // ═══════════════════════════════════════════════════════════════
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Start
+    showEpisodeOverlay();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

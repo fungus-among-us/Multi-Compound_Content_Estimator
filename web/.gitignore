@@ -1,0 +1,16 @@
+# Local/IDE settings
+.claude/
+.aicodeprep-gui
+.vscode/
+.idea/
+
+# Node (in case someone adds it)
+node_modules/
+package-lock.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

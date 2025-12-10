@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>body { margin: 0; overflow: hidden; background: #000; }</style>
+</head>
+<body>
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+
+    // URL Params
+    const params = new URLSearchParams(window.location.search);
+    const speedMult = parseFloat(params.get('speed')) || 1.0;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.z = 20;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap at 2x for performance
+    document.body.appendChild(renderer.domElement);
+
+    // Particles (Boxes)
+    const count = 4000;
+    const geometry = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+
+    const dummy = new THREE.Object3D();
+    const color = new THREE.Color();
+
+    // Data arrays
+    const initialPos = [];
+    const speeds = [];
+    const randoms = [];
+
+    for (let i = 0; i < count; i++) {
+      initialPos.push(
+        (Math.random() - 0.5) * 40,
+        (Math.random() - 0.5) * 40,
+        (Math.random() - 0.5) * 20
+      );
+      speeds.push(0.01 + Math.random() * 0.04);
+      randoms.push(Math.random());
+
+      // Init Colors
+      color.setHSL(Math.random(), 0.8, 0.6);
+      mesh.setColorAt(i, color);
+    }
+
+    scene.add(mesh);
+
+    // Mouse Interaction
+    const mouse = new THREE.Vector2();
+    const target = new THREE.Vector2();
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    });
+
+    // Animation
+    let time = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      time += 0.01 * speedMult;
+      target.lerp(mouse, 0.1);
+
+      for (let i = 0; i < count; i++) {
+        const x = initialPos[i*3];
+        const y = initialPos[i*3 + 1];
+        const z = initialPos[i*3 + 2];
+        const spd = speeds[i] * speedMult;
+        const rnd = randoms[i];
+
+        // Complex motion: Sine waves + Mouse attraction
+        const mx = Math.sin(time + x * 0.5) * 0.5 + (target.x * 10 * rnd);
+        const my = Math.cos(time + y * 0.3) * 0.5 + (target.y * 10 * rnd);
+
+        dummy.position.set(
+          x + mx,
+          y + my,
+          z + Math.sin(time * 2 + rnd * 10) * 2
+        );
+
+        dummy.rotation.x = time * spd * 10;
+        dummy.rotation.y = time * spd * 5;
+
+        // Sparkling scale effect
+        const scale = 1.0 + Math.sin(time * 10 + rnd * 100) * 0.5;
+        dummy.scale.set(scale, scale, scale);
+
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+
+      // Camera gentle sway
+      camera.rotation.z = Math.sin(time * 0.1) * 0.05;
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>

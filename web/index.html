@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VOID.RUNNER // V8</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Rajdhani:wght@500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- VISUALIZER WALLPAPER -->
+  <div class="vis-container">
+    <iframe id="visFrame" src="about:blank" allow="autoplay"></iframe>
+    <div class="vignette"></div>
+  </div>
+
+  <!-- HUD INTERFACE -->
+  <div class="hud-shell" id="mainUi">
+
+    <!-- TOP BAR -->
+    <header class="hud-top">
+      <div class="logo-area">
+        <div class="status-beacon"></div>
+        <div class="title">
+          <h1>VOID<span class="thin">RUNNER</span></h1>
+          <span class="version">SYS.8.0</span>
+        </div>
+      </div>
+
+      <div class="vis-navigator">
+        <button id="visPrevBtn" class="nav-arrow">◀</button>
+        <span class="nav-text">VISUAL_FEED</span>
+        <button id="visNextBtn" class="nav-arrow">▶</button>
+      </div>
+
+      <div class="system-controls">
+        <button id="hideUiBtn" class="hud-btn">HIDE UI [H]</button>
+        <button id="settingsBtn" class="hud-btn icon">⚙</button>
+      </div>
+    </header>
+
+    <!-- CONTENT STACK -->
+    <main class="main-stack">
+
+      <!-- INPUT DECK -->
+      <section class="panel top-panel">
+        <div class="panel-header">DATA_INPUT_MATRIX</div>
+        <div class="panel-content">
+
+          <!-- ROW 1: Full Width Source -->
+          <div class="full-row-group">
+            <label>DATA SOURCE LIBRARY (URL)</label>
+            <div class="url-bar">
+              <input id="libraryUrl" type="text" placeholder="ENTER SECURE HTTPS URL...">
+              <button id="loadUrlBtn">CONNECT</button>
+            </div>
+            <div class="meta-row">
+              <span id="statusText">NO CONNECTION</span>
+              <label class="file-trigger">
+                [ UPLOAD LOCAL JSON ] <input id="libraryFile" type="file" accept=".json" hidden>
+              </label>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- ROW 2: Columns -->
+          <div class="cols-group">
+
+            <!-- Col A: Profile -->
+            <div class="col">
+              <label>BIO_PROFILE</label>
+              <select id="profileSelect" disabled>
+                <option>AWAITING DATA...</option>
+              </select>
+            </div>
+
+            <!-- Col B: Mass -->
+            <div class="col">
+              <div class="split-label">
+                <label>MASS</label>
+                <div class="toggle" id="massModeToggle">
+                  <button data-mode="dry" class="active">DRY</button>
+                  <button data-mode="wet">WET</button>
+                </div>
+              </div>
+              <div class="field-wrap">
+                <input id="massInput" type="number" step="0.1" placeholder="0.0">
+                <span class="suffix">g</span>
+              </div>
+              <div id="dryFractionRow" class="sub-field" style="display:none;">
+                <label>DRY%: <span id="dryFractionVal">10</span></label>
+                <input id="dryFraction" type="range" min="0" max="20" step="0.5" value="10">
+              </div>
+            </div>
+
+            <!-- Col C: Body/Dose -->
+            <div class="col">
+              <label>TARGET</label>
+              <div class="field-wrap">
+                <input id="targetDose" type="number" step="0.05" placeholder="AUTO">
+                <span class="suffix">mg/kg</span>
+              </div>
+              <div class="field-wrap small-mt">
+                <input id="bodyWeight" type="number" step="0.1" placeholder="BODY WEIGHT">
+                <select id="weightUnit"><option value="kg">KG</option><option value="lb">LB</option></select>
+              </div>
+            </div>
+
+            <!-- Col D: Action -->
+            <div class="col action-col">
+              <button id="calculateBtn" class="primary-btn">CALCULATE</button>
+              <button id="clearBtn" class="ghost-btn">CLR</button>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- OUTPUT DECK (Fills rest of height) -->
+      <section class="panel bottom-panel">
+        <div class="panel-header">ANALYSIS_LOG</div>
+        <div id="outputContainer" class="log-display">
+          <div class="empty-state">
+            > SYSTEM_READY<br>> WAITING_FOR_INPUT_<span class="blink">_</span>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- FOOTER: MEDIA PLAYER -->
+    <footer class="media-bar">
+      <div class="media-glass">
+
+        <div class="media-info">
+          <div class="scrolling-title">
+            <span id="trackTitle">LOCAL AUDIO: NO TRACK</span>
+          </div>
+          <div class="time-code">
+            <span id="currTime">00:00</span> / <span id="durTime">--:--</span>
+          </div>
+        </div>
+
+        <div class="media-controls">
+          <button id="prevBtn">⏮</button>
+          <button id="playBtn" class="play-hero">▶</button>
+          <button id="nextBtn">⏭</button>
+        </div>
+
+        <div class="media-utils">
+          <button id="muteBtn">VOL</button>
+          <input id="volSlider" type="range" min="0" max="100" value="50">
+          <span class="sep">|</span>
+          <button id="loadMusicBtn" class="load-btn">LOAD FILES</button>
+          <button id="playlistToggleBtn" class="list-btn">PLAYLIST</button>
+          <input type="file" id="musicFileInput" multiple accept="audio/*" hidden>
+
+          <!-- Playlist -->
+          <div id="playlistPanel" class="playlist-box hidden">
+            <div class="pl-head">LOCAL TRACKS <span id="closePlaylist" class="close">x</span></div>
+            <ul id="playlistUl"></ul>
+          </div>
+        </div>
+
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- CONFIG MODAL -->
+  <div id="settingsModal" class="modal-layer hidden">
+    <div class="modal-card">
+      <h2>SYSTEM CONFIG</h2>
+      <div class="conf-row">
+        <label>VISUAL SPEED</label>
+        <input type="range" id="animSpeed" min="0.1" max="2.0" step="0.1" value="1.0">
+        <span id="animSpeedVal">1.0x</span>
+      </div>
+      <div class="conf-row">
+        <label>AUTO CYCLE (S)</label>
+        <input type="number" id="autoCycleTime" value="0">
+      </div>
+      <small class="hint">0 = Manual switching.</small>
+      <button id="saveSettingsBtn" class="primary-btn">APPLY</button>
+    </div>
+  </div>
+
+  <div id="uiHint" class="hint-toast hidden">PRESS [H] TO SHOW HUD</div>
+
+  <script src="app.js"></script>
+</body>
+</html>

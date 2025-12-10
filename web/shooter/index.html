@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VOID.RUNNER // SHOOTER</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #020408; overflow: hidden; font-family: 'Courier New', monospace; cursor: crosshair; }
+    canvas { display: block; }
+    #hud { position: fixed; top: 0; left: 0; right: 0; padding: 15px 25px; display: flex; justify-content: space-between; pointer-events: none; z-index: 100; }
+    .hud-left, .hud-right { display: flex; flex-direction: column; gap: 5px; }
+    .hud-right { align-items: flex-end; }
+    #hud-score { font-size: 32px; font-weight: bold; color: #00ffff; text-shadow: 0 0 20px #00ffff; letter-spacing: 4px; }
+    #hud-episode { font-size: 14px; color: #ff66aa; text-shadow: 0 0 10px #ff66aa; letter-spacing: 2px; }
+    .hud-label { font-size: 10px; color: #446688; letter-spacing: 3px; }
+    #hud-target { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 100; }
+    #hud-target.visible { opacity: 1; }
+    .target-name { display: block; font-size: 16px; color: #00ffaa; text-shadow: 0 0 15px #00ffaa; letter-spacing: 3px; }
+    .target-aka { display: block; font-size: 12px; color: #ff88cc; font-style: italic; margin-top: 3px; }
+    #episode-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,0,0,0.7); opacity: 0; pointer-events: none; transition: opacity 0.5s; z-index: 200; }
+    #episode-overlay.visible { opacity: 1; }
+    .ep-number { font-size: 24px; color: #446688; letter-spacing: 8px; margin-bottom: 10px; }
+    .ep-name { font-size: 48px; font-weight: bold; color: #00ffff; text-shadow: 0 0 30px #00ffff; letter-spacing: 6px; }
+    .ep-subtitle { font-size: 16px; color: #ff88aa; letter-spacing: 4px; margin-top: 15px; font-style: italic; }
+    #controls { position: fixed; bottom: 15px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #334455; letter-spacing: 2px; pointer-events: none; z-index: 100; }
+    #controls span { margin: 0 15px; }
+    #controls kbd { color: #558899; border: 1px solid #334455; padding: 2px 6px; border-radius: 3px; }
+    #loading { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #020408; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+    #loading.hidden { opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+    .loading-text { font-size: 24px; color: #00ffff; letter-spacing: 4px; animation: pulse 1s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div id="loading"><div class="loading-text">INITIALIZING</div></div>
+  <div id="hud">
+    <div class="hud-left"><div class="hud-label">SCORE</div><div id="hud-score">00000000</div></div>
+    <div class="hud-right"><div id="hud-episode">EPISODE I: FUNGI FOREST</div></div>
+  </div>
+  <div id="hud-target"></div>
+  <div id="episode-overlay"></div>
+  <div id="controls">
+    <span><kbd>MOUSE</kbd> AIM</span>
+    <span><kbd>CLICK</kbd> FIRE</span>
+    <span><kbd>SPACE</kbd> THEME</span>
+    <span><kbd>E</kbd> EPISODE</span>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script>
+// ═══════════════════════════════════════════════════════════════
+// VOID.RUNNER SHOOTER - Single File Version
+// ═══════════════════════════════════════════════════════════════
+
+const EPISODES = [
+  { id: "fungi", name: "FUNGI FOREST", subtitle: "Sacred Mushrooms of the Ancient Woods",
+    themes: [
+      { bg: 0x020805, fog: 0x021008, grid1: 0x00ff88, grid2: 0x004422, accent: 0x00ffaa },
+      { bg: 0x050208, fog: 0x080210, grid1: 0x8844ff, grid2: 0x2a1155, accent: 0xaa66ff },
+      { bg: 0x030506, fog: 0x040608, grid1: 0x00ddff, grid2: 0x003344, accent: 0x44eeff },
+      { bg: 0x080604, fog: 0x0a0806, grid1: 0xffaa00, grid2: 0x442200, accent: 0xffcc44 },
+      { bg: 0x020404, fog: 0x030606, grid1: 0x00ffcc, grid2: 0x004433, accent: 0x66ffdd },
+    ],
+    targets: ["cubensis", "libertyCap", "amanita", "azurescens", "blueMeanie"]
+  },
+  { id: "desert", name: "DESERT VISIONS", subtitle: "Ancient Cacti of the Sacred Lands",
+    themes: [
+      { bg: 0x0a0504, fog: 0x100806, grid1: 0xff6600, grid2: 0x442200, accent: 0xff8833 },
+      { bg: 0x080408, fog: 0x0c060c, grid1: 0xff00aa, grid2: 0x440033, accent: 0xff44cc },
+      { bg: 0x06050a, fog: 0x08070c, grid1: 0xffcc00, grid2: 0x443300, accent: 0xffdd44 },
+      { bg: 0x0a0408, fog: 0x0c0508, grid1: 0xff4466, grid2: 0x441122, accent: 0xff6688 },
+      { bg: 0x050608, fog: 0x070810, grid1: 0x4488ff, grid2: 0x112244, accent: 0x66aaff },
+    ],
+    targets: ["peyote", "sanPedro"]
+  },
+  { id: "jungle", name: "JUNGLE SPIRITS", subtitle: "Vines of the Amazon Dreamtime",
+    themes: [
+      { bg: 0x020604, fog: 0x030805, grid1: 0x44ff00, grid2: 0x114400, accent: 0x88ff44 },
+      { bg: 0x040206, fog: 0x050308, grid1: 0x00ff66, grid2: 0x003322, accent: 0x44ff88 },
+      { bg: 0x030405, fog: 0x040506, grid1: 0x22ffaa, grid2: 0x084422, accent: 0x66ffcc },
+      { bg: 0x050304, fog: 0x080405, grid1: 0xaaff00, grid2: 0x334400, accent: 0xccff44 },
+      { bg: 0x020505, fog: 0x030707, grid1: 0x00ffff, grid2: 0x004444, accent: 0x44ffff },
+    ],
+    targets: ["ayahuasca", "chacruna"]
+  },
+  { id: "creatures", name: "SACRED CREATURES", subtitle: "Spirit Animals of Ancient Medicine",
+    themes: [
+      { bg: 0x020208, fog: 0x03030c, grid1: 0x4444ff, grid2: 0x111144, accent: 0x6666ff },
+      { bg: 0x040408, fog: 0x06060c, grid1: 0x00ccff, grid2: 0x003344, accent: 0x44ddff },
+      { bg: 0x050306, fog: 0x080408, grid1: 0xcc44ff, grid2: 0x331144, accent: 0xdd66ff },
+      { bg: 0x020406, fog: 0x030608, grid1: 0x00ffaa, grid2: 0x004433, accent: 0x44ffcc },
+      { bg: 0x060404, fog: 0x0a0606, grid1: 0xff8800, grid2: 0x442200, accent: 0xffaa44 },
+    ],
+    targets: ["kamboFrog", "bufoToad"]
+  }
+];
+
+const CONFIG = { fireRate: 80, spawnInterval: 1800, horizontalRange: 35, bulletSpeed: 5, hitRadius: 2.5 };
+
+let scene, camera, renderer, clock;
+let ship, crosshair, gridHelper1, gridHelper2;
+let targets = [], bullets = [];
+const state = { mouseX: 0, mouseY: 0, score: 0, episode: 0, themeIndex: 0, isFiring: false, lastFireTime: 0 };
+
+// ═══════════════════════════════════════════════════════════════
+// TARGET FACTORIES
+// ═══════════════════════════════════════════════════════════════
+
+function createCubensis() {
+  const g = new THREE.Group();
+  g.userData = { type: "cubensis", name: "PSILOCYBE CUBENSIS", aka: "Golden Teacher", points: 100 };
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0xf8f4e8, roughness: 0.7 });
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 2.2, 16), stemMat);
+  stem.position.y = -1.1; g.add(stem);
+  const capMat = new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.5, emissive: 0x3a2a00, emissiveIntensity: 0.2 });
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 24, 0, Math.PI*2, 0, Math.PI*0.5), capMat);
+  cap.scale.y = 0.5; cap.position.y = 0.15; g.add(cap);
+  const gillMat = new THREE.MeshStandardMaterial({ color: 0x4a3a4a, side: THREE.DoubleSide });
+  const gills = new THREE.Mesh(new THREE.CircleGeometry(1.1, 48), gillMat);
+  gills.rotation.x = Math.PI/2; gills.position.y = 0.02; g.add(gills);
+  return g;
+}
+
+function createLibertyCap() {
+  const g = new THREE.Group();
+  g.userData = { type: "libertyCap", name: "PSILOCYBE SEMILANCEATA", aka: "Liberty Cap", points: 150 };
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0xf0e8d0, roughness: 0.8 });
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, -1.8, 0), new THREE.Vector3(0.1, -1.2, 0.05),
+    new THREE.Vector3(-0.05, -0.5, -0.03), new THREE.Vector3(0.03, 0, 0)
+  ]);
+  const stem = new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.06, 12, false), stemMat);
+  g.add(stem);
+  const capMat = new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.6 });
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.3, 24), capMat);
+  cap.position.y = 0.65; g.add(cap);
+  const nipple = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 12), capMat);
+  nipple.position.y = 1.45; g.add(nipple);
+  g.scale.setScalar(1.4);
+  return g;
+}
+
+function createAmanita() {
+  const g = new THREE.Group();
+  g.userData = { type: "amanita", name: "AMANITA MUSCARIA", aka: "Fly Agaric", points: 120 };
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.45, 2.5, 16), stemMat);
+  stem.position.y = -1.25; g.add(stem);
+  const skirt = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.06, 8, 24), stemMat);
+  skirt.rotation.x = Math.PI/2; skirt.position.y = -0.4; g.add(skirt);
+  const capMat = new THREE.MeshStandardMaterial({ color: 0xdd2222, roughness: 0.4, emissive: 0x440000, emissiveIntensity: 0.3 });
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(1.4, 32, 24, 0, Math.PI*2, 0, Math.PI*0.55), capMat);
+  cap.scale.y = 0.6; cap.position.y = 0.15; g.add(cap);
+  const wartMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+  for (let i = 0; i < 18; i++) {
+    const wart = new THREE.Mesh(new THREE.SphereGeometry(0.08 + Math.random()*0.08, 8, 6), wartMat);
+    const theta = Math.random() * Math.PI * 2, phi = Math.random() * Math.PI * 0.45;
+    wart.position.set(1.32*Math.sin(phi)*Math.cos(theta), 1.32*Math.cos(phi)*0.6+0.15, 1.32*Math.sin(phi)*Math.sin(theta));
+    wart.scale.y = 0.5; g.add(wart);
+  }
+  return g;
+}
+
+function createAzurescens() {
+  const g = new THREE.Group();
+  g.userData = { type: "azurescens", name: "PSILOCYBE AZURESCENS", aka: "Flying Saucer", points: 200 };
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.75 });
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.22, 2.0, 12), stemMat);
+  stem.position.y = -1.0; g.add(stem);
+  const capMat = new THREE.MeshStandardMaterial({ color: 0x5a4a35, roughness: 0.55 });
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(1.1, 32, 16, 0, Math.PI*2, 0, Math.PI*0.4), capMat);
+  cap.scale.y = 0.4; cap.position.y = 0.25; g.add(cap);
+  const umboMat = new THREE.MeshStandardMaterial({ color: 0xa08030, roughness: 0.5 });
+  const umbo = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), umboMat);
+  umbo.scale.y = 0.4; umbo.position.y = 0.45; g.add(umbo);
+  return g;
+}
+
+function createBlueMeanie() {
+  const g = new THREE.Group();
+  g.userData = { type: "blueMeanie", name: "PANAEOLUS CYANESCENS", aka: "Blue Meanie", points: 175 };
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0xd0c8b8, roughness: 0.8 });
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.8, 10), stemMat);
+  stem.position.y = -0.9; g.add(stem);
+  const capMat = new THREE.MeshStandardMaterial({ color: 0xb8a888, roughness: 0.6 });
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.7, 24, 16, 0, Math.PI*2, 0, Math.PI*0.55), capMat);
+  cap.scale.y = 0.75; cap.position.y = 0.1; g.add(cap);
+  const gillMat = new THREE.MeshStandardMaterial({ color: 0x1a1a22, side: THREE.DoubleSide });
+  const gills = new THREE.Mesh(new THREE.CircleGeometry(0.65, 32), gillMat);
+  gills.rotation.x = Math.PI/2; gills.position.y = -0.02; g.add(gills);
+  g.scale.setScalar(1.3);
+  return g;
+}
+
+function createPeyote() {
+  const g = new THREE.Group();
+  g.userData = { type: "peyote", name: "LOPHOPHORA WILLIAMSII", aka: "Peyote", points: 200 };
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4a6a5a, roughness: 0.75 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.0, 32, 24), bodyMat);
+  body.scale.y = 0.45; g.add(body);
+  const ribMat = new THREE.MeshStandardMaterial({ color: 0x3a5a4a, roughness: 0.8 });
+  for (let i = 0; i < 8; i++) {
+    const angle = (i/8) * Math.PI * 2;
+    const rib = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.8, 6, 12), ribMat);
+    rib.position.set(Math.cos(angle)*0.75, 0, Math.sin(angle)*0.75);
+    rib.rotation.z = Math.PI/2; rib.rotation.y = angle; rib.scale.y = 0.5; g.add(rib);
+  }
+  const woolMat = new THREE.MeshStandardMaterial({ color: 0xf5ead5, roughness: 1.0 });
+  for (let i = 0; i < 8; i++) {
+    const angle = (i/8) * Math.PI * 2 + Math.PI/8;
+    const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), woolMat);
+    tuft.position.set(Math.cos(angle)*0.55, 0.25, Math.sin(angle)*0.55);
+    tuft.scale.y = 0.6; g.add(tuft);
+  }
+  if (Math.random() > 0.4) {
+    const flowerMat = new THREE.MeshStandardMaterial({ color: 0xff88aa, roughness: 0.5, side: THREE.DoubleSide });
+    for (let i = 0; i < 10; i++) {
+      const pAngle = (i/10) * Math.PI * 2;
+      const petal = new THREE.Mesh(new THREE.CircleGeometry(0.18, 8), flowerMat);
+      petal.position.set(Math.cos(pAngle)*0.15, 0.5, Math.sin(pAngle)*0.15);
+      petal.rotation.x = -Math.PI/2.5; petal.rotation.z = pAngle; g.add(petal);
+    }
+  }
+  g.position.y = 0.3;
+  return g;
+}
+
+function createSanPedro() {
+  const g = new THREE.Group();
+  g.userData = { type: "sanPedro", name: "ECHINOPSIS PACHANOI", aka: "San Pedro", points: 180 };
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x5a9a6a, roughness: 0.7 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.7, 4.5, 8), bodyMat);
+  body.position.y = 0.5; g.add(body);
+  const ribMat = new THREE.MeshStandardMaterial({ color: 0x4a8a5a, roughness: 0.8 });
+  for (let i = 0; i < 8; i++) {
+    const angle = (i/8) * Math.PI * 2;
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.18, 4.3, 0.1), ribMat);
+    rib.position.set(Math.cos(angle)*0.62, 0.5, Math.sin(angle)*0.62);
+    rib.rotation.y = angle; g.add(rib);
+  }
+  const top = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12, 0, Math.PI*2, 0, Math.PI*0.5), bodyMat);
+  top.position.y = 2.75; g.add(top);
+  g.position.y = -1;
+  return g;
+}
+
+function createAyahuasca() {
+  const g = new THREE.Group();
+  g.userData = { type: "ayahuasca", name: "BANISTERIOPSIS CAAPI", aka: "Ayahuasca Vine", points: 175 };
+  const vineMat = new THREE.MeshStandardMaterial({ color: 0x5a4535, roughness: 0.85 });
+  for (let v = 0; v < 4; v++) {
+    const points = [];
+    const offset = (v/4) * Math.PI * 2, radius = 0.25 + (v%2)*0.1;
+    for (let i = 0; i <= 24; i++) {
+      const t = i/24;
+      points.push(new THREE.Vector3(Math.sin(t*Math.PI*4+offset)*radius, t*4-2, Math.cos(t*Math.PI*4+offset)*radius));
+    }
+    const vine = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 32, 0.1-v*0.015, 8, false), vineMat);
+    g.add(vine);
+  }
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0x2a6a2a, roughness: 0.75, side: THREE.DoubleSide });
+  for (let i = 0; i < 10; i++) {
+    const leafShape = new THREE.Shape();
+    leafShape.moveTo(0, 0);
+    leafShape.bezierCurveTo(0.3, 0.2, 0.3, 0.6, 0, 0.8);
+    leafShape.bezierCurveTo(-0.3, 0.6, -0.3, 0.2, 0, 0);
+    const leaf = new THREE.Mesh(new THREE.ShapeGeometry(leafShape), leafMat);
+    const y = (Math.random()-0.5)*3.5, angle = Math.random()*Math.PI*2;
+    leaf.position.set(Math.cos(angle)*0.5, y, Math.sin(angle)*0.5);
+    leaf.rotation.y = angle + Math.PI;
+    leaf.scale.setScalar(0.5 + Math.random()*0.3);
+    g.add(leaf);
+  }
+  return g;
+}
+
+function createChacruna() {
+  const g = new THREE.Group();
+  g.userData = { type: "chacruna", name: "PSYCHOTRIA VIRIDIS", aka: "Chacruna", points: 160 };
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 0.85 });
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 2.5, 8), stemMat);
+  g.add(stem);
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0x1a4a1a, roughness: 0.4, side: THREE.DoubleSide });
+  for (let pair = 0; pair < 4; pair++) {
+    const y = -0.8 + pair * 0.7;
+    [-1, 1].forEach(side => {
+      const leafShape = new THREE.Shape();
+      leafShape.ellipse(0, 0.35, 0.15, 0.35, 0, Math.PI*2);
+      const leaf = new THREE.Mesh(new THREE.ShapeGeometry(leafShape), leafMat);
+      leaf.position.set(side*0.3, y, 0);
+      leaf.rotation.z = side * 0.4;
+      leaf.scale.setScalar(1.2);
+      g.add(leaf);
+    });
+  }
+  g.position.y = 0.5;
+  return g;
+}
+
+function createKamboFrog() {
+  const g = new THREE.Group();
+  g.userData = { type: "kamboFrog", name: "PHYLLOMEDUSA BICOLOR", aka: "Giant Monkey Frog", points: 250 };
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x44aa44, roughness: 0.6 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.8, 24, 18), bodyMat);
+  body.scale.set(1, 0.65, 1.3); g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 20, 14), bodyMat);
+  head.position.set(0, 0.15, -0.75); head.scale.set(1.1, 0.85, 1); g.add(head);
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xf8f0d0, roughness: 0.3 });
+  const irisMat = new THREE.MeshStandardMaterial({ color: 0xddaa22, roughness: 0.4 });
+  [-1, 1].forEach(side => {
+    const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 10), eyeMat);
+    eyeWhite.position.set(side*0.25, 0.35, -0.9); g.add(eyeWhite);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), irisMat);
+    iris.position.set(side*0.25, 0.37, -1.02); g.add(iris);
+    const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.02), new THREE.MeshBasicMaterial({ color: 0x101010 }));
+    pupil.position.set(side*0.25, 0.37, -1.12); g.add(pupil);
+  });
+  const bellyMat = new THREE.MeshStandardMaterial({ color: 0xf0e8d0, roughness: 0.7 });
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12), bellyMat);
+  belly.position.y = -0.25; belly.scale.set(0.7, 0.4, 1); g.add(belly);
+  g.position.y = 0.6; g.scale.setScalar(1.1);
+  return g;
+}
+
+function createBufoToad() {
+  const g = new THREE.Group();
+  g.userData = { type: "bufoToad", name: "INCILIUS ALVARIUS", aka: "Sonoran Desert Toad", points: 300 };
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x6a5a4a, roughness: 0.85 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.1, 24, 18), bodyMat);
+  body.scale.set(1.2, 0.55, 1); g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 18, 14), bodyMat);
+  head.position.set(0, 0.08, -0.9); head.scale.set(1.15, 0.75, 0.9); g.add(head);
+  const glandMat = new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 0.9 });
+  [-1, 1].forEach(side => {
+    const gland = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), glandMat);
+    gland.position.set(side*0.45, 0.12, -0.55); gland.scale.set(1.3, 0.6, 0.9); g.add(gland);
+  });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xcc9944, roughness: 0.35 });
+  [-1, 1].forEach(side => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), eyeMat);
+    eye.position.set(side*0.32, 0.25, -1.0); g.add(eye);
+  });
+  const wartMat = new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 0.95 });
+  for (let i = 0; i < 25; i++) {
+    const wart = new THREE.Mesh(new THREE.SphereGeometry(0.04+Math.random()*0.05, 6, 4), wartMat);
+    const theta = Math.random()*Math.PI*2, phi = Math.random()*Math.PI*0.5;
+    wart.position.set(Math.sin(phi)*Math.cos(theta), Math.cos(phi)*0.45+0.05, Math.sin(phi)*Math.sin(theta));
+    g.add(wart);
+  }
+  g.position.y = 0.5;
+  return g;
+}
+
+const TARGET_FACTORIES = {
+  cubensis: createCubensis, libertyCap: createLibertyCap, amanita: createAmanita,
+  azurescens: createAzurescens, blueMeanie: createBlueMeanie, peyote: createPeyote,
+  sanPedro: createSanPedro, ayahuasca: createAyahuasca, chacruna: createChacruna,
+  kamboFrog: createKamboFrog, bufoToad: createBufoToad
+};
+
+// ═══════════════════════════════════════════════════════════════
+// NOMAD SHIP
+// ═══════════════════════════════════════════════════════════════
+
+function createNomadShip() {
+  const ship = new THREE.Group();
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xff0066, transparent: true, opacity: 0.9 });
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 2), coreMat);
+  ship.add(core); ship.userData.core = core;
+
+  const innerShellMat = new THREE.MeshBasicMaterial({ color: 0xff3399, transparent: true, opacity: 0.3, wireframe: true });
+  const innerShell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7, 1), innerShellMat);
+  ship.add(innerShell); ship.userData.innerShell = innerShell;
+
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.15, roughness: 0.1, side: THREE.DoubleSide });
+  const hull = new THREE.Mesh(new THREE.SphereGeometry(1.2, 24, 16, 0, Math.PI*2, 0, Math.PI*0.6), hullMat);
+  hull.position.y = 0.2; ship.add(hull);
+
+  const ring1Mat = new THREE.MeshBasicMaterial({ color: 0x00ddff, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+  const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.02, 8, 48), ring1Mat);
+  ring1.rotation.x = Math.PI/2; ship.add(ring1); ship.userData.ring1 = ring1;
+
+  const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xff44aa, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+  const ring2 = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.015, 8, 32), ring2Mat);
+  ring2.rotation.x = Math.PI/2; ring2.rotation.z = 0.3; ship.add(ring2); ship.userData.ring2 = ring2;
+
+  const ring3Mat = new THREE.MeshBasicMaterial({ color: 0x44ffaa, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+  const ring3 = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.01, 8, 64), ring3Mat);
+  ring3.rotation.x = Math.PI/2.2; ship.add(ring3); ship.userData.ring3 = ring3;
+
+  const tentacles = [];
+  const tentacleMat = new THREE.MeshBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0.4 });
+  for (let i = 0; i < 6; i++) {
+    const angle = (i/6) * Math.PI * 2;
+    const points = [];
+    for (let j = 0; j <= 12; j++) {
+      const t = j/12, wave = Math.sin(t*Math.PI*2) * 0.15;
+      points.push(new THREE.Vector3(Math.cos(angle)*(0.8+t*1.5)+wave, -t*2.5-0.3, Math.sin(angle)*(0.8+t*1.5)+wave));
+    }
+    const tent = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 16, 0.05, 8, false), tentacleMat.clone());
+    ship.add(tent);
+    tentacles.push({ mesh: tent, angle, phase: Math.random()*Math.PI*2 });
+  }
+  ship.userData.tentacles = tentacles;
+
+  const probeMat = new THREE.MeshBasicMaterial({ color: 0xff0088, transparent: true, opacity: 0.7 });
+  const probe = new THREE.Mesh(new THREE.ConeGeometry(0.15, 1.5, 6), probeMat);
+  probe.rotation.x = -Math.PI/2; probe.position.z = -1.8; probe.position.y = 0.2; ship.add(probe);
+
+  ship.scale.setScalar(0.8);
+  ship.position.y = 4;
+  return ship;
+}
+
+function animateShip(delta, now) {
+  if (!ship) return;
+  if (ship.userData.core) {
+    ship.userData.core.rotation.y += delta * 2;
+    ship.userData.core.rotation.x += delta;
+    ship.userData.core.scale.setScalar(1 + Math.sin(now*0.006) * 0.2);
+  }
+  if (ship.userData.innerShell) {
+    ship.userData.innerShell.rotation.y -= delta * 1.5;
+    ship.userData.innerShell.rotation.z += delta * 0.5;
+  }
+  if (ship.userData.ring1) ship.userData.ring1.rotation.z += delta * 0.4;
+  if (ship.userData.ring2) ship.userData.ring2.rotation.z -= delta * 0.6;
+  if (ship.userData.ring3) ship.userData.ring3.rotation.z += delta * 0.2;
+  if (ship.userData.tentacles) {
+    ship.userData.tentacles.forEach(t => { t.mesh.rotation.y = Math.sin(now*0.003 + t.phase) * 0.1; });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GAME LOGIC
+// ═══════════════════════════════════════════════════════════════
+
+function init() {
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x020408, 0.025);
+
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 200);
+  camera.position.set(0, 8, 20);
+  camera.lookAt(0, 5, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x020408, 1);
+  document.body.appendChild(renderer.domElement);
+
+  clock = new THREE.Clock();
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0x223344, 0.8));
+  const front = new THREE.DirectionalLight(0x88aaff, 0.9);
+  front.position.set(5, 10, 10); scene.add(front);
+  const back = new THREE.DirectionalLight(0xff88aa, 0.4);
+  back.position.set(-5, 5, -10); scene.add(back);
+
+  // Grid
+  gridHelper1 = new THREE.GridHelper(200, 100, 0x00ffaa, 0x003322);
+  gridHelper1.position.y = -5; scene.add(gridHelper1);
+  gridHelper2 = new THREE.GridHelper(200, 50, 0x00ffaa, 0x001a11);
+  gridHelper2.position.y = -5.1; gridHelper2.rotation.y = Math.PI/4; scene.add(gridHelper2);
+
+  // Ship
+  ship = createNomadShip();
+  scene.add(ship);
+
+  // Crosshair
+  crosshair = new THREE.Group();
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+  crosshair.add(new THREE.Mesh(new THREE.RingGeometry(0.4, 0.5, 32), ringMat));
+  const dotMat = new THREE.MeshBasicMaterial({ color: 0xff0066, transparent: true, opacity: 0.9 });
+  crosshair.add(new THREE.Mesh(new THREE.CircleGeometry(0.1, 16), dotMat));
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+  [0, Math.PI/2, Math.PI, Math.PI*1.5].forEach(angle => {
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.3), lineMat);
+    line.position.set(Math.cos(angle)*0.7, Math.sin(angle)*0.7, 0);
+    line.rotation.z = angle + Math.PI/2;
+    crosshair.add(line);
+  });
+  crosshair.position.z = 5;
+  scene.add(crosshair);
+
+  // Events
+  window.addEventListener('mousemove', e => {
+    state.mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+    state.mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+  });
+  window.addEventListener('mousedown', e => { if (e.button === 0) state.isFiring = true; });
+  window.addEventListener('mouseup', e => { if (e.button === 0) state.isFiring = false; });
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); nextTheme(); }
+    else if (e.code === 'KeyE') nextEpisode();
+  });
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+  window.addEventListener('contextmenu', e => e.preventDefault());
+  window.addEventListener('message', e => { if (e.data?.type === 'audio-beat') crosshair.scale.setScalar(1 + (e.data.energy||1) * 0.3); });
+
+  applyTheme();
+  showEpisodeOverlay();
+  setInterval(spawnTarget, CONFIG.spawnInterval);
+  for (let i = 0; i < 3; i++) setTimeout(spawnTarget, i * 300);
+
+  document.getElementById('loading').classList.add('hidden');
+  animate();
+}
+
+function applyTheme() {
+  const ep = EPISODES[state.episode];
+  const theme = ep.themes[state.themeIndex];
+  scene.background = new THREE.Color(theme.bg);
+  scene.fog.color.setHex(theme.fog);
+  gridHelper1.material.color.setHex(theme.grid1);
+  gridHelper2.material.color.setHex(theme.grid2);
+  renderer.setClearColor(theme.bg, 1);
+}
+
+function nextTheme() {
+  const ep = EPISODES[state.episode];
+  state.themeIndex = (state.themeIndex + 1) % ep.themes.length;
+  applyTheme();
+}
+
+function nextEpisode() {
+  state.episode = (state.episode + 1) % EPISODES.length;
+  state.themeIndex = 0;
+  targets.forEach(t => scene.remove(t));
+  targets = [];
+  applyTheme();
+  showEpisodeOverlay();
+  updateHUD();
+}
+
+function showEpisodeOverlay() {
+  const ep = EPISODES[state.episode];
+  const overlay = document.getElementById('episode-overlay');
+  const numerals = ['I', 'II', 'III', 'IV'];
+  overlay.innerHTML = `<div class="ep-number">EPISODE ${numerals[state.episode]}</div><div class="ep-name">${ep.name}</div><div class="ep-subtitle">${ep.subtitle}</div>`;
+  overlay.classList.add('visible');
+  setTimeout(() => overlay.classList.remove('visible'), 2500);
+}
+
+function updateHUD() {
+  document.getElementById('hud-score').textContent = state.score.toString().padStart(8, '0');
+  const ep = EPISODES[state.episode];
+  const numerals = ['I', 'II', 'III', 'IV'];
+  document.getElementById('hud-episode').textContent = `EPISODE ${numerals[state.episode]}: ${ep.name}`;
+}
+
+function spawnTarget() {
+  const ep = EPISODES[state.episode];
+  const type = ep.targets[Math.floor(Math.random() * ep.targets.length)];
+  const factory = TARGET_FACTORIES[type];
+  if (!factory) return;
+
+  const target = factory();
+  target.position.set((Math.random()-0.5) * CONFIG.horizontalRange, 2 + Math.random()*6, -70 - Math.random()*20);
+  target.userData.speed = 0.12 + Math.random() * 0.08;
+  target.userData.rotSpeed = (Math.random() - 0.5) * 2;
+  target.userData.bobPhase = Math.random() * Math.PI * 2;
+  scene.add(target);
+  targets.push(target);
+}
+
+function fireBullet() {
+  const now = performance.now();
+  if (now - state.lastFireTime < CONFIG.fireRate) return;
+  state.lastFireTime = now;
+
+  const bulletMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.9 });
+  const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), bulletMat);
+  bullet.position.copy(crosshair.position);
+  bullet.userData.velocity = new THREE.Vector3(0, 0, -CONFIG.bulletSpeed);
+
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
+  bullet.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), glowMat));
+
+  scene.add(bullet);
+  bullets.push(bullet);
+}
+
+function createExplosion(pos) {
+  const theme = EPISODES[state.episode].themes[state.themeIndex];
+  for (let i = 0; i < 20; i++) {
+    const mat = new THREE.MeshBasicMaterial({ color: theme.accent, transparent: true, opacity: 1 });
+    const particle = new THREE.Mesh(new THREE.SphereGeometry(0.1 + Math.random()*0.2, 6, 4), mat);
+    particle.position.copy(pos);
+    particle.userData.velocity = new THREE.Vector3((Math.random()-0.5)*2, (Math.random()-0.5)*2, (Math.random()-0.5)*2);
+    particle.userData.life = 1;
+    scene.add(particle);
+    const animateParticle = () => {
+      particle.userData.life -= 0.03;
+      if (particle.userData.life <= 0) { scene.remove(particle); return; }
+      particle.position.add(particle.userData.velocity);
+      particle.userData.velocity.multiplyScalar(0.95);
+      particle.material.opacity = particle.userData.life;
+      particle.scale.setScalar(particle.userData.life);
+      requestAnimationFrame(animateParticle);
+    };
+    animateParticle();
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  const now = performance.now();
+
+  if (state.isFiring) fireBullet();
+
+  // Crosshair
+  const targetX = state.mouseX * 15, targetY = state.mouseY * 8 + 5;
+  crosshair.position.x += (targetX - crosshair.position.x) * 0.15;
+  crosshair.position.y += (targetY - crosshair.position.y) * 0.15;
+  crosshair.scale.lerp(new THREE.Vector3(1,1,1), 0.1);
+  crosshair.rotation.z += 0.01;
+
+  // Ship follows crosshair
+  if (ship) {
+    ship.position.x += (crosshair.position.x * 0.3 - ship.position.x) * 0.08;
+    ship.position.y += ((crosshair.position.y * 0.3 + 3) - ship.position.y) * 0.08;
+    ship.rotation.z = (crosshair.position.x - ship.position.x) * 0.08;
+  }
+  animateShip(delta, now);
+
+  // Bullets
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const bullet = bullets[i];
+    bullet.position.add(bullet.userData.velocity);
+    if (bullet.position.z < -100) { scene.remove(bullet); bullets.splice(i, 1); continue; }
+    for (let j = targets.length - 1; j >= 0; j--) {
+      if (bullet.position.distanceTo(targets[j].position) < CONFIG.hitRadius) {
+        state.score += targets[j].userData.points || 100;
+        updateHUD();
+        createExplosion(targets[j].position.clone());
+        scene.remove(bullet); scene.remove(targets[j]);
+        bullets.splice(i, 1); targets.splice(j, 1);
+        break;
+      }
+    }
+  }
+
+  // Targets
+  for (let i = targets.length - 1; i >= 0; i--) {
+    const t = targets[i];
+    t.position.z += t.userData.speed;
+    t.rotation.y += t.userData.rotSpeed * delta;
+    t.position.y += Math.sin(now * 0.002 + t.userData.bobPhase) * 0.02;
+    if (t.position.z > 25) { scene.remove(t); targets.splice(i, 1); }
+  }
+
+  // Target display
+  const hudTarget = document.getElementById('hud-target');
+  let closest = null, closestDist = Infinity;
+  const crosshairWorld = new THREE.Vector3();
+  crosshair.getWorldPosition(crosshairWorld);
+  targets.forEach(t => {
+    const sp = t.position.clone().project(camera);
+    const cp = crosshairWorld.clone().project(camera);
+    const d = sp.distanceTo(cp);
+    if (d < closestDist && d < 0.3) { closest = t; closestDist = d; }
+  });
+  if (closest && closest.userData.name) {
+    hudTarget.innerHTML = `<span class="target-name">${closest.userData.name}</span><span class="target-aka">"${closest.userData.aka}"</span>`;
+    hudTarget.classList.add('visible');
+  } else {
+    hudTarget.classList.remove('visible');
+  }
+
+  // Grid scroll
+  if (gridHelper1) gridHelper1.position.z = (gridHelper1.position.z + 0.1) % 4;
+  if (gridHelper2) gridHelper2.position.z = (gridHelper2.position.z + 0.1) % 8;
+
+  renderer.render(scene, camera);
+}
+
+// Start
+init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Magma Particle Field</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: #000;
+      overflow: hidden;
+      cursor: pointer;
+      font-family: "Space Grotesk", system-ui, sans-serif;
+    }
+
+    #container {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #050000 0%, #1a0001 50%, #2a0100 100%);
+      overflow: hidden;
+    }
+
+    .glow {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: radial-gradient(circle at 50% 50%,
+          rgba(255, 60, 0, 0.05) 0%,
+          rgba(255, 0, 40, 0.08) 40%,
+          transparent 75%);
+      mix-blend-mode: screen;
+      opacity: 0.9;
+    }
+
+    .ui-hint {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 100, 50, 0.5);
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      font-size: 14px;
+      letter-spacing: 2px;
+      pointer-events: none;
+      text-transform: uppercase;
+    }
+  </style>
+
+</head>
+<body>
+  <div id="container"></div>
+  <div class="glow"></div>
+  <div class="ui-hint">Click center for shockwave</div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js";
+
+    let scene, camera, renderer, particles;
+    let time = 0;
+    const screenMouse = new THREE.Vector2(10000, 10000);
+    const worldMouse = new THREE.Vector3();
+    const lastWorldMouse = new THREE.Vector3();
+    const mouseVelocity = new THREE.Vector3();
+    const smoothedMouseVelocity = new THREE.Vector3();
+
+    function generateShape(t, angle, phase) {
+      const baseRadius = 65;
+      const spiralTwist = 6;
+      const pulse = Math.sin(t * Math.PI * 2 + phase);
+      const radius = baseRadius * Math.sqrt(t) * (1 + 0.3 * pulse);
+      let x = radius * Math.cos(angle + t * spiralTwist);
+      let y = radius * Math.sin(angle + t * spiralTwist);
+      let z = radius * Math.sin(t * 8 + phase) * 0.8;
+      return { x, y, z };
+    }
+
+    const particleCount = 130000;
+
+    function createParticleSystem() {
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const colors = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const angles = new Float32Array(particleCount);
+      const originalPos = new Float32Array(particleCount * 3);
+      const randomFactors = new Float32Array(particleCount);
+
+      const colorPalette = [
+        new THREE.Color("#ff9a00"),
+        new THREE.Color("#ff004d"),
+        new THREE.Color("#ffec00"),
+        new THREE.Color("#ff3300"),
+        new THREE.Color("#ff5500")
+      ];
+
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const t = i / particleCount;
+        const angle = i * goldenAngle;
+        const pos = generateShape(t, angle, 0.8);
+
+        positions[i3] = pos.x;
+        positions[i3 + 1] = pos.y;
+        positions[i3 + 2] = pos.z;
+        originalPos[i3] = pos.x;
+        originalPos[i3 + 1] = pos.y;
+        originalPos[i3 + 2] = pos.z;
+        angles[i] = angle;
+
+        const colorT = t * (colorPalette.length - 1);
+        const idx = Math.floor(colorT);
+        const mix = colorT - idx;
+        const c1 = colorPalette[idx];
+        const c2 = colorPalette[Math.min(idx + 1, colorPalette.length - 1)];
+
+        const color = new THREE.Color().lerpColors(c1, c2, mix);
+        color.multiplyScalar(0.8 + Math.random() * 0.4);
+
+        colors[i3] = color.r;
+        colors[i3 + 1] = color.g;
+        colors[i3 + 2] = color.b;
+
+        sizes[i] = 1.0 * (1.1 - t * 0.3) * (0.6 + Math.random() * 0.7);
+        randomFactors[i] = Math.random();
+      }
+
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+      geometry.setAttribute("angle", new THREE.BufferAttribute(angles, 1));
+      geometry.setAttribute("originalPos", new THREE.BufferAttribute(originalPos, 3));
+      geometry.setAttribute("randomFactor", new THREE.BufferAttribute(randomFactors, 1));
+
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          time: { value: 0 },
+          shockwaveTime: { value: -100.0 },
+          mousePos: { value: new THREE.Vector3(10000, 10000, 0) },
+          mouseVel: { value: new THREE.Vector3() },
+          pixelRatio: { value: window.devicePixelRatio }
+        },
+        vertexShader: `
+            uniform float time;
+            uniform float shockwaveTime;
+            uniform vec3 mousePos;
+            uniform vec3 mouseVel;
+            uniform float pixelRatio;
+
+            attribute vec3 originalPos;
+            attribute float size;
+            attribute float angle;
+            attribute float randomFactor;
+
+            varying vec3 vColor;
+            varying float vIntensity;
+            varying float vRandomFactor;
+
+            void main() {
+                vColor = color;
+                vRandomFactor = randomFactor;
+                vec3 basePos = originalPos;
+
+                float morphTime = time * 0.5;
+                float pattern1 = sin(angle * 5.0 + morphTime) * cos(angle * 2.0);
+                float pattern2 = cos(angle * 4.0 - morphTime) * sin(angle * 3.0);
+                float blend = sin(morphTime * 0.6) * 0.5 + 0.5;
+                float displacement = mix(pattern1, pattern2, blend);
+
+                vec3 normOrig = normalize(originalPos + vec3(0.001));
+                vec3 animatedPos = originalPos + normOrig * displacement * 6.0;
+
+                vec3 pos = animatedPos;
+
+                float waveAge = time - shockwaveTime;
+                float waveSpeed = 60.0;
+
+                if (waveAge > 0.0 && waveAge < 3.0) {
+                    float distFromCenter = length(originalPos.xy);
+                    float currentRadius = waveAge * waveSpeed;
+                    float waveWidth = 20.0;
+
+                    float diff = distFromCenter - currentRadius;
+
+                    if (abs(diff) < waveWidth) {
+                        float rippleShape = cos(diff * 0.25) * 0.5 + 0.5;
+
+                        float decay = 1.0 - smoothstep(0.0, 3.0, waveAge);
+
+                        float zForce = rippleShape * 20.0 * decay;
+                        pos.z += zForce;
+
+                        pos.xy += normalize(pos.xy) * rippleShape * 5.0 * decay;
+
+                        vColor += vec3(0.5, 0.4, 0.2) * rippleShape * decay;
+                    }
+                }
+
+                vec3 toMouse = mousePos - pos;
+                float dist = length(toMouse);
+                float influence = pow(smoothstep(45.0, 5.0, dist), 2.0);
+                vIntensity = 0.0;
+
+                if (influence > 0.001) {
+                    float velMag = length(mouseVel);
+                    float velInfluence = smoothstep(0.1, 2.0, velMag) * influence;
+                    vec3 forceDir = normalize(mouseVel + vec3(0.001));
+                    vec3 pushDir = normalize(pos - mousePos);
+                    vec3 dir = normalize(mix(forceDir, pushDir, 0.3));
+
+                    float dispMag = velInfluence * (5.0 + randomFactor * 6.0);
+                    pos += dir * dispMag;
+                    vIntensity = clamp(influence * 0.6 + velInfluence * 0.9, 0.0, 1.0);
+                }
+
+                pos += (animatedPos - pos) * 0.01;
+
+                float breath = sin(time * 1.3 + angle) * 0.08;
+                pos *= 1.0 + breath * (1.0 - influence * 0.7) * (0.6 + vRandomFactor * 0.7);
+
+                vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+                gl_Position = projectionMatrix * mvPos;
+
+                float sizeFactor = 1.0 + vIntensity * 0.3;
+                float perspective = 500.0 / -mvPos.z;
+                gl_PointSize = size * sizeFactor * perspective * pixelRatio;
+            }
+        `,
+        fragmentShader: `
+            uniform float time;
+            varying vec3 vColor;
+            varying float vIntensity;
+            varying float vRandomFactor;
+
+            void main() {
+                vec2 pc = gl_PointCoord * 2.0 - 1.0;
+                float dist = length(pc);
+                if (dist > 1.0) discard;
+
+                float core = smoothstep(0.2, 0.0, dist) * 0.6;
+                float glow = exp(-dist * 2.4) * 0.7;
+
+                vec3 highlight = vec3(1.0, 0.8, 0.4);
+                vec3 finalColor = mix(vColor, highlight, vIntensity * 0.6);
+
+                float shimmer = 1.0 + sin((time * 60.0 + vRandomFactor * 150.0) * (0.7 + vIntensity * 0.3)) * 0.15 * (1.0 - dist * 0.5);
+
+                float baseAlpha = (core + glow) * clamp(0.3 + vIntensity * 0.6, 0.0, 1.0);
+                float finalAlpha = baseAlpha * shimmer;
+
+                gl_FragColor = vec4(finalColor, finalAlpha);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        vertexColors: true
+      });
+
+      material.uniforms.time = { value: 0 };
+      return new THREE.Points(geometry, material);
+    }
+
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
+      camera.position.z = 110;
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x000000, 0);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      document.getElementById("container").appendChild(renderer.domElement);
+
+      particles = createParticleSystem();
+      scene.add(particles);
+
+      document.addEventListener("click", () => {
+        if (particles) {
+          particles.material.uniforms.shockwaveTime.value = time;
+        }
+      });
+
+      document.addEventListener(
+        "mousemove",
+        (e) => {
+          screenMouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+          screenMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        },
+        { passive: true }
+      );
+
+      document.addEventListener("mouseleave", () => {
+        screenMouse.x = 10000;
+        screenMouse.y = 10000;
+      });
+
+      window.addEventListener("resize", onWindowResize);
+    }
+
+    const raycaster = new THREE.Raycaster();
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+
+    function updateMouseAndUniforms() {
+      lastWorldMouse.copy(worldMouse);
+      raycaster.setFromCamera(screenMouse, camera);
+      const intersect = new THREE.Vector3();
+      if (screenMouse.x < 9999 && raycaster.ray.intersectPlane(plane, intersect)) {
+        worldMouse.copy(intersect);
+        if (lastWorldMouse.x < 9000) {
+          mouseVelocity.subVectors(worldMouse, lastWorldMouse);
+        } else {
+          mouseVelocity.set(0, 0, 0);
+        }
+      } else {
+        worldMouse.set(10000, 10000, 0);
+        mouseVelocity.set(0, 0, 0);
+      }
+      smoothedMouseVelocity.lerp(mouseVelocity, 0.15);
+      mouseVelocity.multiplyScalar(0.92);
+
+      if (particles) {
+        particles.material.uniforms.mousePos.value.copy(worldMouse);
+        particles.material.uniforms.mouseVel.value.copy(smoothedMouseVelocity);
+        particles.material.uniforms.time.value = time;
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      time = performance.now() * 0.0007;
+
+      updateMouseAndUniforms();
+
+      camera.position.x = Math.sin(time * 0.3) * 12;
+      camera.position.y = Math.cos(time * 0.4) * 12;
+      camera.lookAt(0, 0, 0);
+
+      renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+
+      if (window.innerWidth < 800) {
+        camera.position.z = 140;
+      } else {
+        camera.position.z = 110;
+      }
+
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      if (particles) particles.material.uniforms.pixelRatio.value = renderer.getPixelRatio();
+    }
+
+    init();
+    animate();
+  </script>
+</body>
+</html>
