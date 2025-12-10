@@ -137,12 +137,102 @@ const EPISODES = [
   }
 ];
 
-const CONFIG = { fireRate: 80, spawnInterval: 1800, horizontalRange: 35, bulletSpeed: 5, hitRadius: 2.5 };
+const CONFIG = { fireRate: 80, spawnInterval: 1800, horizontalRange: 35, bulletSpeed: 5, hitRadius: 2.5, hitRadiusSq: 6.25 };
 
 let scene, camera, renderer, clock;
 let ship, crosshair, gridHelper1, gridHelper2;
-let targets = [], bullets = [];
+let targets = [], bullets = [], particles = [];
 const state = { mouseX: 0, mouseY: 0, score: 0, episode: 0, themeIndex: 0, isFiring: false, lastFireTime: 0 };
+
+// ═══════════════════════════════════════════════════════════════
+// PERFORMANCE: Pre-allocated objects to avoid GC pressure
+// ═══════════════════════════════════════════════════════════════
+const _vec3A = new THREE.Vector3();
+const _vec3B = new THREE.Vector3();
+const _vec3C = new THREE.Vector3();
+const _color1 = new THREE.Color();
+const _color2 = new THREE.Color();
+const _scaleOne = new THREE.Vector3(1, 1, 1);
+
+// Cached DOM references
+let hudScore, hudEpisode, hudTarget, episodeOverlay;
+
+// ═══════════════════════════════════════════════════════════════
+// PERFORMANCE: Object pools for bullets and particles
+// ═══════════════════════════════════════════════════════════════
+const bulletPool = [];
+const particlePool = [];
+const POOL_SIZE = 100;
+const PARTICLE_POOL_SIZE = 200;
+
+// Shared geometries and materials (created once)
+let bulletGeometry, bulletMaterial, bulletGlowGeometry, bulletGlowMaterial;
+let particleGeometry;
+
+function initPools() {
+  // Bullet shared resources
+  bulletGeometry = new THREE.SphereGeometry(0.15, 8, 6);
+  bulletMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.9 });
+  bulletGlowGeometry = new THREE.SphereGeometry(0.3, 8, 6);
+  bulletGlowMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
+
+  // Particle shared resources
+  particleGeometry = new THREE.SphereGeometry(0.15, 6, 4);
+
+  // Pre-allocate bullet pool
+  for (let i = 0; i < POOL_SIZE; i++) {
+    const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+    const glow = new THREE.Mesh(bulletGlowGeometry, bulletGlowMaterial);
+    bullet.add(glow);
+    bullet.userData.velocity = new THREE.Vector3();
+    bullet.userData.active = false;
+    bullet.visible = false;
+    bulletPool.push(bullet);
+  }
+
+  // Pre-allocate particle pool
+  for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 });
+    const particle = new THREE.Mesh(particleGeometry, mat);
+    particle.userData.velocity = new THREE.Vector3();
+    particle.userData.life = 0;
+    particle.userData.active = false;
+    particle.visible = false;
+    particlePool.push(particle);
+  }
+}
+
+function getBullet() {
+  for (let i = 0; i < bulletPool.length; i++) {
+    if (!bulletPool[i].userData.active) {
+      bulletPool[i].userData.active = true;
+      bulletPool[i].visible = true;
+      return bulletPool[i];
+    }
+  }
+  return null; // Pool exhausted
+}
+
+function returnBullet(bullet) {
+  bullet.userData.active = false;
+  bullet.visible = false;
+}
+
+function getParticle() {
+  for (let i = 0; i < particlePool.length; i++) {
+    if (!particlePool[i].userData.active) {
+      particlePool[i].userData.active = true;
+      particlePool[i].visible = true;
+      return particlePool[i];
+    }
+  }
+  return null; // Pool exhausted
+}
+
+function returnParticle(particle) {
+  particle.userData.active = false;
+  particle.visible = false;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // TARGET FACTORIES
@@ -560,6 +650,12 @@ function animateShip(delta, now) {
 // ═══════════════════════════════════════════════════════════════
 
 function init() {
+  // Cache DOM references once
+  hudScore = document.getElementById('hud-score');
+  hudEpisode = document.getElementById('hud-episode');
+  hudTarget = document.getElementById('hud-target');
+  episodeOverlay = document.getElementById('episode-overlay');
+
   scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x020408, 0.025);
 
@@ -567,13 +663,20 @@ function init() {
   camera.position.set(0, 8, 20);
   camera.lookAt(0, 5, 0);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(0x020408, 1);
   document.body.appendChild(renderer.domElement);
 
   clock = new THREE.Clock();
+
+  // Initialize object pools
+  initPools();
+
+  // Add pooled objects to scene (they start invisible)
+  bulletPool.forEach(b => scene.add(b));
+  particlePool.forEach(p => scene.add(p));
 
   // Lighting
   scene.add(new THREE.AmbientLight(0x223344, 0.8));
@@ -608,11 +711,11 @@ function init() {
   crosshair.position.z = 5;
   scene.add(crosshair);
 
-  // Events
+  // Events - use passive listeners where possible
   window.addEventListener('mousemove', e => {
     state.mouseX = (e.clientX / window.innerWidth) * 2 - 1;
     state.mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
-  });
+  }, { passive: true });
   window.addEventListener('mousedown', e => { if (e.button === 0) state.isFiring = true; });
   window.addEventListener('mouseup', e => { if (e.button === 0) state.isFiring = false; });
   window.addEventListener('keydown', e => {
@@ -674,20 +777,19 @@ function nextEpisode() {
   updateHUD();
 }
 
+const NUMERALS = ['I', 'II', 'III', 'IV']; // Pre-allocated
+
 function showEpisodeOverlay() {
   const ep = EPISODES[state.episode];
-  const overlay = document.getElementById('episode-overlay');
-  const numerals = ['I', 'II', 'III', 'IV'];
-  overlay.innerHTML = `<div class="ep-number">EPISODE ${numerals[state.episode]}</div><div class="ep-name">${ep.name}</div><div class="ep-subtitle">${ep.subtitle}</div>`;
-  overlay.classList.add('visible');
-  setTimeout(() => overlay.classList.remove('visible'), 2500);
+  episodeOverlay.innerHTML = `<div class="ep-number">EPISODE ${NUMERALS[state.episode]}</div><div class="ep-name">${ep.name}</div><div class="ep-subtitle">${ep.subtitle}</div>`;
+  episodeOverlay.classList.add('visible');
+  setTimeout(() => episodeOverlay.classList.remove('visible'), 2500);
 }
 
 function updateHUD() {
-  document.getElementById('hud-score').textContent = state.score.toString().padStart(8, '0');
+  hudScore.textContent = state.score.toString().padStart(8, '0');
   const ep = EPISODES[state.episode];
-  const numerals = ['I', 'II', 'III', 'IV'];
-  document.getElementById('hud-episode').textContent = `EPISODE ${numerals[state.episode]}: ${ep.name}`;
+  hudEpisode.textContent = `EPISODE ${NUMERALS[state.episode]}: ${ep.name}`;
 }
 
 function spawnTarget() {
@@ -710,54 +812,43 @@ function fireBullet() {
   if (now - state.lastFireTime < CONFIG.fireRate) return;
   state.lastFireTime = now;
 
-  const bulletMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.9 });
-  const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), bulletMat);
+  // Get bullet from pool instead of creating new
+  const bullet = getBullet();
+  if (!bullet) return; // Pool exhausted
 
-  // Get ship's probe position in world coordinates
-  const probeWorldPos = new THREE.Vector3();
+  // Get ship's probe position in world coordinates (use pre-allocated vector)
   if (ship && ship.userData.probe) {
-    ship.userData.probe.getWorldPosition(probeWorldPos);
+    ship.userData.probe.getWorldPosition(_vec3A);
   } else {
-    // Fallback to ship position if probe not found
-    probeWorldPos.copy(ship ? ship.position : new THREE.Vector3(0, 4, 0));
-    probeWorldPos.z -= 1.5;
+    _vec3A.set(ship ? ship.position.x : 0, ship ? ship.position.y : 4, ship ? ship.position.z - 1.5 : -1.5);
   }
 
-  bullet.position.copy(probeWorldPos);
+  bullet.position.copy(_vec3A);
 
-  // Calculate direction from probe to crosshair
-  const direction = new THREE.Vector3()
-    .subVectors(crosshair.position, probeWorldPos)
-    .normalize();
+  // Calculate direction from probe to crosshair (use pre-allocated vectors)
+  _vec3B.copy(crosshair.position).sub(_vec3A).normalize().multiplyScalar(CONFIG.bulletSpeed);
+  bullet.userData.velocity.copy(_vec3B);
 
-  bullet.userData.velocity = direction.multiplyScalar(CONFIG.bulletSpeed);
-
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
-  bullet.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), glowMat));
-
-  scene.add(bullet);
   bullets.push(bullet);
 }
 
 function createExplosion(pos) {
   const theme = EPISODES[state.episode].themes[state.themeIndex];
   for (let i = 0; i < 20; i++) {
-    const mat = new THREE.MeshBasicMaterial({ color: theme.accent, transparent: true, opacity: 1 });
-    const particle = new THREE.Mesh(new THREE.SphereGeometry(0.1 + Math.random()*0.2, 6, 4), mat);
+    const particle = getParticle();
+    if (!particle) return; // Pool exhausted
+
     particle.position.copy(pos);
-    particle.userData.velocity = new THREE.Vector3((Math.random()-0.5)*2, (Math.random()-0.5)*2, (Math.random()-0.5)*2);
+    particle.material.color.setHex(theme.accent);
+    particle.material.opacity = 1;
+    particle.scale.setScalar(0.1 + Math.random() * 0.2);
+    particle.userData.velocity.set(
+      (Math.random() - 0.5) * 2,
+      (Math.random() - 0.5) * 2,
+      (Math.random() - 0.5) * 2
+    );
     particle.userData.life = 1;
-    scene.add(particle);
-    const animateParticle = () => {
-      particle.userData.life -= 0.03;
-      if (particle.userData.life <= 0) { scene.remove(particle); return; }
-      particle.position.add(particle.userData.velocity);
-      particle.userData.velocity.multiplyScalar(0.95);
-      particle.material.opacity = particle.userData.life;
-      particle.scale.setScalar(particle.userData.life);
-      requestAnimationFrame(animateParticle);
-    };
-    animateParticle();
+    particles.push(particle);
   }
 }
 
@@ -768,11 +859,11 @@ function animate() {
 
   if (state.isFiring) fireBullet();
 
-  // Crosshair - smooth tracking without rotation
+  // Crosshair - smooth tracking without rotation (use pre-allocated vector)
   const targetX = state.mouseX * 15, targetY = state.mouseY * 8 + 5;
   crosshair.position.x += (targetX - crosshair.position.x) * 0.15;
   crosshair.position.y += (targetY - crosshair.position.y) * 0.15;
-  crosshair.scale.lerp(new THREE.Vector3(1,1,1), 0.1);
+  crosshair.scale.lerp(_scaleOne, 0.1);
 
   // Ship follows crosshair
   if (ship) {
@@ -782,21 +873,45 @@ function animate() {
   }
   animateShip(delta, now);
 
-  // Bullets
+  // Bullets - use squared distance for collision, return to pool instead of remove
   for (let i = bullets.length - 1; i >= 0; i--) {
     const bullet = bullets[i];
     bullet.position.add(bullet.userData.velocity);
-    if (bullet.position.z < -100) { scene.remove(bullet); bullets.splice(i, 1); continue; }
+    if (bullet.position.z < -100) {
+      returnBullet(bullet);
+      bullets.splice(i, 1);
+      continue;
+    }
     for (let j = targets.length - 1; j >= 0; j--) {
-      if (bullet.position.distanceTo(targets[j].position) < CONFIG.hitRadius) {
+      // Use squared distance to avoid sqrt
+      _vec3A.copy(bullet.position).sub(targets[j].position);
+      const distSq = _vec3A.x * _vec3A.x + _vec3A.y * _vec3A.y + _vec3A.z * _vec3A.z;
+      if (distSq < CONFIG.hitRadiusSq) {
         state.score += targets[j].userData.points || 100;
         updateHUD();
-        createExplosion(targets[j].position.clone());
-        scene.remove(bullet); scene.remove(targets[j]);
-        bullets.splice(i, 1); targets.splice(j, 1);
+        createExplosion(targets[j].position);
+        returnBullet(bullet);
+        scene.remove(targets[j]);
+        bullets.splice(i, 1);
+        targets.splice(j, 1);
         break;
       }
     }
+  }
+
+  // Particles - update in main loop, return to pool when dead
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.userData.life -= 0.03;
+    if (p.userData.life <= 0) {
+      returnParticle(p);
+      particles.splice(i, 1);
+      continue;
+    }
+    p.position.add(p.userData.velocity);
+    p.userData.velocity.multiplyScalar(0.95);
+    p.material.opacity = p.userData.life;
+    p.scale.setScalar(p.userData.life);
   }
 
   // Targets
@@ -808,17 +923,17 @@ function animate() {
     if (t.position.z > 25) { scene.remove(t); targets.splice(i, 1); }
   }
 
-  // Target display
-  const hudTarget = document.getElementById('hud-target');
+  // Target display (use cached DOM reference and pre-allocated vectors)
   let closest = null, closestDist = Infinity;
-  const crosshairWorld = new THREE.Vector3();
-  crosshair.getWorldPosition(crosshairWorld);
-  targets.forEach(t => {
-    const sp = t.position.clone().project(camera);
-    const cp = crosshairWorld.clone().project(camera);
-    const d = sp.distanceTo(cp);
-    if (d < closestDist && d < 0.3) { closest = t; closestDist = d; }
-  });
+  crosshair.getWorldPosition(_vec3A);
+  _vec3B.copy(_vec3A).project(camera); // Crosshair projected
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i];
+    _vec3C.copy(t.position).project(camera);
+    const dx = _vec3C.x - _vec3B.x, dy = _vec3C.y - _vec3B.y;
+    const d = dx * dx + dy * dy; // Squared distance in screen space
+    if (d < closestDist && d < 0.09) { closest = t; closestDist = d; }
+  }
   if (closest && closest.userData.name) {
     hudTarget.innerHTML = `<span class="target-name">${closest.userData.name}</span><span class="target-aka">"${closest.userData.aka}"</span>`;
     hudTarget.classList.add('visible');
@@ -841,15 +956,15 @@ function animate() {
     gridHelper2.material.opacity = 0.3 + theme.gridPulse * pulse * 0.2;
   }
 
-  // Hue shift effect (color cycling at higher intensities)
+  // Hue shift effect (color cycling at higher intensities) - use pre-allocated colors
   if (theme.hueShift > 0 && state.baseGrid1) {
     const hueOffset = Math.sin(now * 0.0005 * intensity) * theme.hueShift;
-    const color1 = new THREE.Color(state.baseGrid1);
-    const color2 = new THREE.Color(state.baseGrid2);
-    color1.offsetHSL(hueOffset, 0, 0);
-    color2.offsetHSL(hueOffset * 0.7, 0, 0);
-    gridHelper1.material.color.copy(color1);
-    gridHelper2.material.color.copy(color2);
+    _color1.setHex(state.baseGrid1);
+    _color2.setHex(state.baseGrid2);
+    _color1.offsetHSL(hueOffset, 0, 0);
+    _color2.offsetHSL(hueOffset * 0.7, 0, 0);
+    gridHelper1.material.color.copy(_color1);
+    gridHelper2.material.color.copy(_color2);
   }
 
   // Camera subtle sway at higher intensities (psychedelic disorientation)
